@@ -42,5 +42,15 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var near_tile: PackedVector2Array = instance.call(
+        "_tile_polygon", instance.board_model.goal, 1.0
+    )
+    var near_cell_depth := absf(near_tile[3].y - near_tile[0].y)
+    var near_cell_width := absf(near_tile[1].x - near_tile[0].x)
+    if near_cell_depth < near_cell_width * 0.5:
+        push_error("Camera angle is too low for readable cells behind walls")
+        quit(1)
+        return
+
     print("PASS: main scene smoke test")
     quit(0)

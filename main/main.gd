@@ -6,16 +6,16 @@ const BOARD_SIZE := Vector2i(12, 8)
 const START_CELL := Vector2i(0, 3)
 const GOAL_CELL := Vector2i(11, 3)
 const BOARD_CENTER_X := 650.0
-const BOARD_TOP_Y := 126.0
-const BOARD_BOTTOM_Y := 590.0
-const TOP_CELL_WIDTH := 52.0
-const BOTTOM_CELL_WIDTH := 90.0
-const BLOCK_HEIGHT := 34.0
+const BOARD_TOP_Y := 110.0
+const BOARD_BOTTOM_Y := 610.0
+const TOP_CELL_WIDTH := 60.0
+const BOTTOM_CELL_WIDTH := 74.0
+const BLOCK_HEIGHT := 20.0
 const ENEMY_SPEED := 125.0
 
 const COLOR_FLOOR_A := Color("#26384b")
 const COLOR_FLOOR_B := Color("#2b4154")
-const COLOR_GRID := Color("#587084")
+const COLOR_GRID := Color("#7693a6")
 const COLOR_ROUTE := Color("#59d8ee")
 const COLOR_VALID := Color("#58e6ad")
 const COLOR_INVALID := Color("#ff6b74")
@@ -77,7 +77,7 @@ func _draw_board() -> void:
             var fill := COLOR_FLOOR_A if (depth + lateral) % 2 == 0 else COLOR_FLOOR_B
             var tile := _tile_polygon(cell, 1.0)
             draw_colored_polygon(tile, fill)
-            draw_polyline(_close_polygon(tile), COLOR_GRID, 1.2, true)
+            draw_polyline(_close_polygon(tile), COLOR_GRID, 1.7, true)
 
 func _draw_route() -> void:
     if board_model.route.size() < 2:

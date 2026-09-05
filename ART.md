@@ -5,7 +5,9 @@
 - Fixed three-quarter view aligned with the guarded exit's short side.
 - The rift and gate remain centered on opposite short sides of the logical board.
 - The rift is visually farther away; enemies advance mainly downward toward the player.
-- Grid cells widen toward the camera to create perspective in pure 2D.
+- Grid cells widen mildly toward the camera to create perspective in pure 2D.
+- The camera pitch stays high enough that near-side walls do not hide build cells behind them.
+- Wall silhouettes remain lower than a projected cell's depth and grid outlines retain strong contrast.
 - Towers grow upward from a clearly readable base footprint.
 - Units remain readable against terrain at the target zoom.
 
