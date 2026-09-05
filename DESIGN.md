@@ -33,4 +33,4 @@ Tower placement is unrestricted once tower health and enemy attacks exist. If co
 
 ## Presentation
 
-Riftguard is a 2D game viewed from a fixed three-quarter angle aligned with the board's short side. The guarded exit remains centered on the near short side, with the rift centered opposite it, so the main enemy flow reads downward toward the player. Gameplay runs on a logical rectangular grid while widening trapezoidal cells create depth without a 3D simulation. Height is communicated with silhouettes, vertical offsets, shadows, overlap sorting and effects.
+Riftguard currently uses a 13-cell-long by 9-cell-wide logical board, viewed from a fixed high three-quarter angle along one long side. The rift and guarded exit remain centered on opposite 9-cell short sides, making the primary enemy flow read laterally across the screen. Grid rows widen mildly toward the camera to create depth without a 3D simulation. Height is communicated with silhouettes, vertical offsets, shadows, overlap sorting and effects.

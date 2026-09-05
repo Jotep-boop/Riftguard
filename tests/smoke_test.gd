@@ -17,28 +17,27 @@ func _initialize() -> void:
         quit(1)
         return
 
-    if instance.board_model.size != Vector2i(12, 8):
-        push_error("The playfield must retain its rectangular 12x8 layout")
+    if instance.board_model.size != Vector2i(13, 9):
+        push_error("The playfield must be 13 cells long and 9 cells wide")
         quit(1)
         return
-    if instance.board_model.start.x != 0 or instance.board_model.goal.x != 11:
+    if instance.board_model.start.x != 0 or instance.board_model.goal.x != 12:
         push_error("Rift and gate must remain on opposite short sides")
         quit(1)
         return
-    if instance.board_model.start.y != instance.board_model.goal.y \
-        or instance.board_model.start.y not in [3, 4]:
-        push_error("Rift and gate must be centered on the short sides")
+    if instance.board_model.start.y != 4 or instance.board_model.goal.y != 4:
+        push_error("Rift and gate must be centered on the 9-cell short sides")
         quit(1)
         return
 
     var start_world: Vector2 = instance.call("_cell_to_world", instance.board_model.start)
     var goal_world: Vector2 = instance.call("_cell_to_world", instance.board_model.goal)
-    if goal_world.y <= start_world.y:
-        push_error("The guarded exit must be closer to the camera than the rift")
+    if goal_world.x <= start_world.x:
+        push_error("Enemy flow must cross the screen toward the guarded exit")
         quit(1)
         return
-    if absf(goal_world.x - start_world.x) > 1.0:
-        push_error("The main enemy flow must read as downward on screen")
+    if absf(goal_world.y - start_world.y) > 1.0:
+        push_error("The long-side camera must read the route as lateral movement")
         quit(1)
         return
 

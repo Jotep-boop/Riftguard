@@ -2,9 +2,9 @@ extends Node2D
 
 const BoardModelScript = preload("res://gameplay/board/board_model.gd")
 
-const BOARD_SIZE := Vector2i(12, 8)
-const START_CELL := Vector2i(0, 3)
-const GOAL_CELL := Vector2i(11, 3)
+const BOARD_SIZE := Vector2i(13, 9)
+const START_CELL := Vector2i(0, 4)
+const GOAL_CELL := Vector2i(12, 4)
 const BOARD_CENTER_X := 650.0
 const BOARD_TOP_Y := 110.0
 const BOARD_BOTTOM_Y := 610.0
@@ -71,10 +71,10 @@ func _draw() -> void:
     _draw_enemy()
 
 func _draw_board() -> void:
-    for depth in range(BOARD_SIZE.x):
-        for lateral in range(BOARD_SIZE.y):
-            var cell := Vector2i(depth, lateral)
-            var fill := COLOR_FLOOR_A if (depth + lateral) % 2 == 0 else COLOR_FLOOR_B
+    for depth in range(BOARD_SIZE.y):
+        for longitudinal in range(BOARD_SIZE.x):
+            var cell := Vector2i(longitudinal, depth)
+            var fill := COLOR_FLOOR_A if (longitudinal + depth) % 2 == 0 else COLOR_FLOOR_B
             var tile := _tile_polygon(cell, 1.0)
             draw_colored_polygon(tile, fill)
             draw_polyline(_close_polygon(tile), COLOR_GRID, 1.7, true)
@@ -102,9 +102,9 @@ func _draw_endpoints() -> void:
     draw_polyline(_close_polygon(gate_tile), COLOR_GATE, 3.0, true)
 
 func _draw_blockers() -> void:
-    for depth in range(BOARD_SIZE.x):
+    for depth in range(BOARD_SIZE.y):
         for cell in board_model.blocked.keys():
-            if cell.x == depth:
+            if cell.y == depth:
                 _draw_prism(cell, Color("#4f92a3"), 1.0)
 
 func _draw_hover_preview() -> void:
@@ -189,9 +189,9 @@ func _cell_to_world(cell: Vector2i) -> Vector2:
     return center / tile.size()
 
 func _cell_at_point(point: Vector2) -> Vector2i:
-    for depth in range(BOARD_SIZE.x):
-        for lateral in range(BOARD_SIZE.y):
-            var cell := Vector2i(depth, lateral)
+    for depth in range(BOARD_SIZE.y):
+        for longitudinal in range(BOARD_SIZE.x):
+            var cell := Vector2i(longitudinal, depth)
             if Geometry2D.is_point_in_polygon(point, _tile_polygon(cell, 1.0)):
                 return cell
     return Vector2i(-1, -1)
@@ -202,17 +202,17 @@ func _inside_board(cell: Vector2i) -> bool:
 func _tile_polygon(cell: Vector2i, scale_factor: float) -> PackedVector2Array:
     var corners := PackedVector2Array([
         _grid_point(cell.x, cell.y),
-        _grid_point(cell.x, cell.y + 1),
-        _grid_point(cell.x + 1, cell.y + 1),
         _grid_point(cell.x + 1, cell.y),
+        _grid_point(cell.x + 1, cell.y + 1),
+        _grid_point(cell.x, cell.y + 1),
     ])
     return _scaled_polygon(corners, _polygon_center(corners), scale_factor)
 
-func _grid_point(depth_boundary: int, lateral_boundary: int) -> Vector2:
-    var depth_ratio := float(depth_boundary) / BOARD_SIZE.x
+func _grid_point(longitudinal_boundary: int, depth_boundary: int) -> Vector2:
+    var depth_ratio := float(depth_boundary) / BOARD_SIZE.y
     var row_width := lerpf(TOP_CELL_WIDTH, BOTTOM_CELL_WIDTH, depth_ratio)
     return Vector2(
-        BOARD_CENTER_X + (lateral_boundary - 3.5) * row_width,
+        BOARD_CENTER_X + (longitudinal_boundary - BOARD_SIZE.x * 0.5) * row_width,
         lerpf(BOARD_TOP_Y, BOARD_BOTTOM_Y, depth_ratio)
     )
 
@@ -245,11 +245,11 @@ func _build_interface() -> void:
 
     _make_label("MAZE PROTOTYPE  ·  M1", Vector2(31, 63), 13, Color("#77bed4"))
     _make_label("LMB  Place barricade\nRMB  Remove barricade\nR      Clear maze\nD      Toggle route", Vector2(28, 112), 17, Color("#c5d9e5"))
-    _make_label("RIFT", Vector2(627, 90), 14, COLOR_RIFT)
-    _make_label("GATE", Vector2(623, 610), 14, COLOR_GATE)
+    _make_label("RIFT", Vector2(220, 340), 14, COLOR_RIFT)
+    _make_label("GATE", Vector2(1058, 340), 14, COLOR_GATE)
 
     route_label = _make_label("Route overlay: ON", Vector2(1020, 26), 15, COLOR_ROUTE)
-    status_label = _make_label("Shape their descent toward the gate.", Vector2(28, 665), 18, COLOR_ROUTE)
+    status_label = _make_label("Shape the crossing toward the gate.", Vector2(28, 665), 18, COLOR_ROUTE)
 
 func _make_label(text: String, position: Vector2, font_size: int, color: Color) -> Label:
     var label := Label.new()
