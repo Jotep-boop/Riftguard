@@ -17,5 +17,16 @@ func _initialize() -> void:
         quit(1)
         return
 
+    var start_world: Vector2 = instance.call("_cell_to_world", instance.board_model.start)
+    var goal_world: Vector2 = instance.call("_cell_to_world", instance.board_model.goal)
+    if goal_world.y <= start_world.y:
+        push_error("The guarded exit must be closer to the camera than the rift")
+        quit(1)
+        return
+    if absf(goal_world.x - start_world.x) > 1.0:
+        push_error("The main enemy flow must read as downward on screen")
+        quit(1)
+        return
+
     print("PASS: main scene smoke test")
     quit(0)

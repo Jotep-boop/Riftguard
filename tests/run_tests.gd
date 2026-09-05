@@ -8,6 +8,7 @@ var failures := 0
 func _init() -> void:
     _test_finds_a_direct_route()
     _test_routes_around_a_blocked_cell()
+    _test_balances_an_unblocked_diagonal_route()
     _test_board_accepts_a_legal_blocker()
     _test_board_rejects_a_route_sealing_blocker()
     _test_board_removes_a_blocker()
@@ -15,7 +16,7 @@ func _init() -> void:
     _test_board_previews_a_legal_placement()
     _test_board_previews_a_route_sealing_placement()
     if failures == 0:
-        print("PASS: 8 tests")
+        print("PASS: 9 tests")
         quit(0)
     else:
         push_error("FAIL: %d assertion(s)" % failures)
@@ -43,6 +44,18 @@ func _test_routes_around_a_blocked_cell() -> void:
     _expect(not route.is_empty(), "an alternate route exists")
     _expect(not route.has(Vector2i(1, 0)), "route avoids blocked cells")
     _expect(route.size() == 5, "route takes the shortest detour")
+
+func _test_balances_an_unblocked_diagonal_route() -> void:
+    var route: Array[Vector2i] = GridPathfinder.find_path(
+        Vector2i(4, 4),
+        Vector2i(0, 0),
+        Vector2i(3, 3),
+        {}
+    )
+    var maximum_lateral_deviation := 0
+    for cell in route:
+        maximum_lateral_deviation = maxi(maximum_lateral_deviation, absi(cell.x - cell.y))
+    _expect(maximum_lateral_deviation <= 1, "diagonal routes alternate axes to read as forward movement")
 
 func _test_board_accepts_a_legal_blocker() -> void:
     var board = BoardModel.new(Vector2i(3, 2), Vector2i(0, 0), Vector2i(2, 0))

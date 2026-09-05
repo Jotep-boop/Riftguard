@@ -2,9 +2,9 @@ extends Node2D
 
 const BoardModelScript = preload("res://gameplay/board/board_model.gd")
 
-const BOARD_SIZE := Vector2i(12, 8)
-const START_CELL := Vector2i(0, 3)
-const GOAL_CELL := Vector2i(11, 3)
+const BOARD_SIZE := Vector2i(8, 8)
+const START_CELL := Vector2i(0, 0)
+const GOAL_CELL := Vector2i(7, 7)
 const TILE_WIDTH := 96.0
 const TILE_HEIGHT := 48.0
 const TILE_HALF := Vector2(TILE_WIDTH * 0.5, TILE_HEIGHT * 0.5)
@@ -226,11 +226,11 @@ func _build_interface() -> void:
 
     _make_label("MAZE PROTOTYPE  ·  M1", Vector2(31, 63), 13, Color("#77bed4"))
     _make_label("LMB  Place barricade\nRMB  Remove barricade\nR      Clear maze\nD      Toggle route", Vector2(28, 112), 17, Color("#c5d9e5"))
-    _make_label("RIFT", Vector2(262, 420), 14, COLOR_RIFT)
-    _make_label("GATE", Vector2(1044, 610), 14, COLOR_GATE)
+    _make_label("RIFT", Vector2(617, 100), 14, COLOR_RIFT)
+    _make_label("GATE", Vector2(613, 525), 14, COLOR_GATE)
 
     route_label = _make_label("Route overlay: ON", Vector2(1020, 26), 15, COLOR_ROUTE)
-    status_label = _make_label("Shape the route. Never seal it.", Vector2(28, 665), 18, COLOR_ROUTE)
+    status_label = _make_label("Shape their descent toward the gate.", Vector2(28, 665), 18, COLOR_ROUTE)
 
 func _make_label(text: String, position: Vector2, font_size: int, color: Color) -> Label:
     var label := Label.new()

@@ -15,6 +15,8 @@
 - [ ] Tower targeting
 - [ ] Projectile and hit resolution
 - [ ] Enemy health and death
+- [ ] Tower health and enemy breach attacks when the route is sealed
+- [ ] Reachable breach-target selection and route recalculation after destruction
 - [ ] Range preview
 - [ ] Layered impact feedback
 

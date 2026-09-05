@@ -27,6 +27,10 @@ Each faction changes how the maze is planned; factions must not merely recolor e
 
 The first vertical slice contains one board, one faction, three tower roles and a short sequence of waves. No accounts, progression store, procedural campaign or network multiplayer before that slice is fun and stable.
 
+## Blocking and breach behavior
+
+Tower placement is unrestricted once tower health and enemy attacks exist. If construction seals every normal route, enemies identify a reachable breach point, advance to it and attack the blocking tower until a route opens. A blocked route is therefore a costly tactical choice, not an invalid input. The prototype may continue rejecting sealed routes until this complete feedback loop is implemented; it must never silently trap enemies.
+
 ## Presentation
 
-Riftguard is a 2D game viewed from an isometric three-quarter angle. Gameplay runs on a logical square grid while art is projected onto diamond-shaped tiles. Height is communicated with silhouettes, vertical offsets, shadows, overlap sorting and effects rather than a 3D simulation.
+Riftguard is a 2D game viewed from an isometric three-quarter angle. The guarded exit sits on the near short side, with the rift opposite it, so the main enemy flow reads downward toward the player. Gameplay runs on a logical square grid while art is projected onto diamond-shaped tiles. Height is communicated with silhouettes, vertical offsets, shadows, overlap sorting and effects rather than a 3D simulation.

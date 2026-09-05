@@ -2,7 +2,8 @@
 
 ## Camera and projection
 
-- Fixed three-quarter isometric view.
+- Fixed three-quarter isometric view from the guarded exit's short side.
+- The rift is visually farther away; enemies advance mainly downward toward the player.
 - Logical cells render as 2:1 diamonds.
 - Towers grow upward from a clearly readable base footprint.
 - Units remain readable against terrain at the target zoom.
