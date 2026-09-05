@@ -17,6 +17,20 @@ func _initialize() -> void:
         quit(1)
         return
 
+    if instance.board_model.size != Vector2i(12, 8):
+        push_error("The playfield must retain its rectangular 12x8 layout")
+        quit(1)
+        return
+    if instance.board_model.start.x != 0 or instance.board_model.goal.x != 11:
+        push_error("Rift and gate must remain on opposite short sides")
+        quit(1)
+        return
+    if instance.board_model.start.y != instance.board_model.goal.y \
+        or instance.board_model.start.y not in [3, 4]:
+        push_error("Rift and gate must be centered on the short sides")
+        quit(1)
+        return
+
     var start_world: Vector2 = instance.call("_cell_to_world", instance.board_model.start)
     var goal_world: Vector2 = instance.call("_cell_to_world", instance.board_model.goal)
     if goal_world.y <= start_world.y:

@@ -1,12 +1,12 @@
 # Riftguard
 
-A modern isometric 2D maze tower-defense game inspired by the social, strategic joy of classic Warcraft III mauls.
+A modern perspective-styled 2D maze tower-defense game inspired by the social, strategic joy of classic Warcraft III mauls.
 
 ## Current milestone: Maze Prototype
 
 The first playable slice proves the foundation:
 
-- isometric diamond grid rendered in 2D
+- perspective-projected grid rendered in 2D
 - enemy route from rift to gate
 - build preview and grid interaction
 - path validation before construction

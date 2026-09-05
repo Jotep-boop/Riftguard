@@ -2,9 +2,10 @@
 
 ## Camera and projection
 
-- Fixed three-quarter isometric view from the guarded exit's short side.
+- Fixed three-quarter view aligned with the guarded exit's short side.
+- The rift and gate remain centered on opposite short sides of the logical board.
 - The rift is visually farther away; enemies advance mainly downward toward the player.
-- Logical cells render as 2:1 diamonds.
+- Grid cells widen toward the camera to create perspective in pure 2D.
 - Towers grow upward from a clearly readable base footprint.
 - Units remain readable against terrain at the target zoom.
 

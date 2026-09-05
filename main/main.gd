@@ -2,13 +2,14 @@ extends Node2D
 
 const BoardModelScript = preload("res://gameplay/board/board_model.gd")
 
-const BOARD_SIZE := Vector2i(8, 8)
-const START_CELL := Vector2i(0, 0)
-const GOAL_CELL := Vector2i(7, 7)
-const TILE_WIDTH := 96.0
-const TILE_HEIGHT := 48.0
-const TILE_HALF := Vector2(TILE_WIDTH * 0.5, TILE_HEIGHT * 0.5)
-const BOARD_ORIGIN := Vector2(640.0, 172.0)
+const BOARD_SIZE := Vector2i(12, 8)
+const START_CELL := Vector2i(0, 3)
+const GOAL_CELL := Vector2i(11, 3)
+const BOARD_CENTER_X := 650.0
+const BOARD_TOP_Y := 126.0
+const BOARD_BOTTOM_Y := 590.0
+const TOP_CELL_WIDTH := 52.0
+const BOTTOM_CELL_WIDTH := 90.0
 const BLOCK_HEIGHT := 34.0
 const ENEMY_SPEED := 125.0
 
@@ -70,16 +71,13 @@ func _draw() -> void:
     _draw_enemy()
 
 func _draw_board() -> void:
-    for diagonal in range(BOARD_SIZE.x + BOARD_SIZE.y - 1):
-        for x in range(BOARD_SIZE.x):
-            var y := diagonal - x
-            if y < 0 or y >= BOARD_SIZE.y:
-                continue
-            var cell := Vector2i(x, y)
-            var center := _cell_to_world(cell)
-            var fill := COLOR_FLOOR_A if (x + y) % 2 == 0 else COLOR_FLOOR_B
-            draw_colored_polygon(_diamond(center, 1.0), fill)
-            draw_polyline(_closed_diamond(center, 1.0), COLOR_GRID, 1.2, true)
+    for depth in range(BOARD_SIZE.x):
+        for lateral in range(BOARD_SIZE.y):
+            var cell := Vector2i(depth, lateral)
+            var fill := COLOR_FLOOR_A if (depth + lateral) % 2 == 0 else COLOR_FLOOR_B
+            var tile := _tile_polygon(cell, 1.0)
+            draw_colored_polygon(tile, fill)
+            draw_polyline(_close_polygon(tile), COLOR_GRID, 1.2, true)
 
 func _draw_route() -> void:
     if board_model.route.size() < 2:
@@ -98,33 +96,35 @@ func _draw_endpoints() -> void:
     draw_circle(rift_center, 16.0, Color("#6e238f"))
     draw_arc(rift_center, 19.0, 0.0, TAU, 32, COLOR_RIFT, 3.0, true)
 
-    var gate_center := _cell_to_world(GOAL_CELL) - Vector2(0.0, 8.0)
-    draw_colored_polygon(_diamond(gate_center, 0.47), Color("#6b5126"))
-    draw_polyline(_closed_diamond(gate_center, 0.53), COLOR_GATE, 3.0, true)
+    var gate_center := _cell_to_world(GOAL_CELL)
+    var gate_tile := _scaled_polygon(_tile_polygon(GOAL_CELL, 1.0), gate_center, 0.53)
+    draw_colored_polygon(gate_tile, Color("#6b5126"))
+    draw_polyline(_close_polygon(gate_tile), COLOR_GATE, 3.0, true)
 
 func _draw_blockers() -> void:
-    for diagonal in range(BOARD_SIZE.x + BOARD_SIZE.y - 1):
+    for depth in range(BOARD_SIZE.x):
         for cell in board_model.blocked.keys():
-            if cell.x + cell.y == diagonal:
-                _draw_prism(_cell_to_world(cell), Color("#4f92a3"), 1.0)
+            if cell.x == depth:
+                _draw_prism(cell, Color("#4f92a3"), 1.0)
 
 func _draw_hover_preview() -> void:
     if not _inside_board(hovered_cell) or board_model.blocked.has(hovered_cell):
         return
     var allowed: bool = board_model.can_place_blocker(hovered_cell)
     _draw_prism(
-        _cell_to_world(hovered_cell),
+        hovered_cell,
         Color(COLOR_VALID if allowed else COLOR_INVALID, 0.62),
         0.88
     )
 
-func _draw_prism(center: Vector2, color: Color, scale_factor: float) -> void:
-    var base := _diamond(center, scale_factor)
-    var top_center := center - Vector2(0.0, BLOCK_HEIGHT)
-    var top := _diamond(top_center, scale_factor)
-    var left_side := PackedVector2Array([top[3], top[2], base[2], base[3]])
+func _draw_prism(cell: Vector2i, color: Color, scale_factor: float) -> void:
+    var base := _tile_polygon(cell, scale_factor)
+    var top := PackedVector2Array()
+    for point in base:
+        top.append(point - Vector2(0.0, BLOCK_HEIGHT))
+    var front_side := PackedVector2Array([top[3], top[2], base[2], base[3]])
     var right_side := PackedVector2Array([top[1], base[1], base[2], top[2]])
-    draw_colored_polygon(left_side, color.darkened(0.42))
+    draw_colored_polygon(front_side, color.darkened(0.42))
     draw_colored_polygon(right_side, color.darkened(0.25))
     draw_colored_polygon(top, color.lightened(0.12))
     draw_polyline(_close_polygon(top), color.lightened(0.35), 1.6, true)
@@ -182,36 +182,55 @@ func _advance_enemy(delta: float) -> void:
         enemy_position = to
 
 func _cell_to_world(cell: Vector2i) -> Vector2:
-    return BOARD_ORIGIN + Vector2(
-        (cell.x - cell.y) * TILE_HALF.x,
-        (cell.x + cell.y) * TILE_HALF.y
-    )
+    var tile := _tile_polygon(cell, 1.0)
+    var center := Vector2.ZERO
+    for point in tile:
+        center += point
+    return center / tile.size()
 
 func _cell_at_point(point: Vector2) -> Vector2i:
-    for diagonal in range(BOARD_SIZE.x + BOARD_SIZE.y - 1):
-        for x in range(BOARD_SIZE.x):
-            var y := diagonal - x
-            if y < 0 or y >= BOARD_SIZE.y:
-                continue
-            var cell := Vector2i(x, y)
-            if Geometry2D.is_point_in_polygon(point, _diamond(_cell_to_world(cell), 1.0)):
+    for depth in range(BOARD_SIZE.x):
+        for lateral in range(BOARD_SIZE.y):
+            var cell := Vector2i(depth, lateral)
+            if Geometry2D.is_point_in_polygon(point, _tile_polygon(cell, 1.0)):
                 return cell
     return Vector2i(-1, -1)
 
 func _inside_board(cell: Vector2i) -> bool:
     return cell.x >= 0 and cell.y >= 0 and cell.x < BOARD_SIZE.x and cell.y < BOARD_SIZE.y
 
-func _diamond(center: Vector2, scale_factor: float) -> PackedVector2Array:
-    var half := TILE_HALF * scale_factor
-    return PackedVector2Array([
-        center + Vector2(0.0, -half.y),
-        center + Vector2(half.x, 0.0),
-        center + Vector2(0.0, half.y),
-        center + Vector2(-half.x, 0.0),
+func _tile_polygon(cell: Vector2i, scale_factor: float) -> PackedVector2Array:
+    var corners := PackedVector2Array([
+        _grid_point(cell.x, cell.y),
+        _grid_point(cell.x, cell.y + 1),
+        _grid_point(cell.x + 1, cell.y + 1),
+        _grid_point(cell.x + 1, cell.y),
     ])
+    return _scaled_polygon(corners, _polygon_center(corners), scale_factor)
 
-func _closed_diamond(center: Vector2, scale_factor: float) -> PackedVector2Array:
-    return _close_polygon(_diamond(center, scale_factor))
+func _grid_point(depth_boundary: int, lateral_boundary: int) -> Vector2:
+    var depth_ratio := float(depth_boundary) / BOARD_SIZE.x
+    var row_width := lerpf(TOP_CELL_WIDTH, BOTTOM_CELL_WIDTH, depth_ratio)
+    return Vector2(
+        BOARD_CENTER_X + (lateral_boundary - 3.5) * row_width,
+        lerpf(BOARD_TOP_Y, BOARD_BOTTOM_Y, depth_ratio)
+    )
+
+func _polygon_center(points: PackedVector2Array) -> Vector2:
+    var center := Vector2.ZERO
+    for point in points:
+        center += point
+    return center / points.size()
+
+func _scaled_polygon(
+    points: PackedVector2Array,
+    center: Vector2,
+    scale_factor: float
+) -> PackedVector2Array:
+    var scaled := PackedVector2Array()
+    for point in points:
+        scaled.append(center + (point - center) * scale_factor)
+    return scaled
 
 func _close_polygon(points: PackedVector2Array) -> PackedVector2Array:
     var closed := points.duplicate()
@@ -226,8 +245,8 @@ func _build_interface() -> void:
 
     _make_label("MAZE PROTOTYPE  ·  M1", Vector2(31, 63), 13, Color("#77bed4"))
     _make_label("LMB  Place barricade\nRMB  Remove barricade\nR      Clear maze\nD      Toggle route", Vector2(28, 112), 17, Color("#c5d9e5"))
-    _make_label("RIFT", Vector2(617, 100), 14, COLOR_RIFT)
-    _make_label("GATE", Vector2(613, 525), 14, COLOR_GATE)
+    _make_label("RIFT", Vector2(627, 90), 14, COLOR_RIFT)
+    _make_label("GATE", Vector2(623, 610), 14, COLOR_GATE)
 
     route_label = _make_label("Route overlay: ON", Vector2(1020, 26), 15, COLOR_ROUTE)
     status_label = _make_label("Shape their descent toward the gate.", Vector2(28, 665), 18, COLOR_ROUTE)
