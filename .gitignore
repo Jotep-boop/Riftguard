@@ -1,0 +1,14 @@
+# Godot-generated files
+.godot/
+/export/
+
+# Local tooling
+.vscode/
+.idea/
+*.tmp
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
