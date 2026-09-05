@@ -2,22 +2,25 @@
 
 A modern perspective-styled 2D maze tower-defense game inspired by the social, strategic joy of classic Warcraft III mauls.
 
-## Current milestone: Maze Prototype
+## Current milestone: Combat Slice
 
-The first playable slice proves the foundation:
+The current playable slice proves the maze and first combat loop:
 
 - perspective-projected grid rendered in 2D
 - enemy route from rift to gate
 - build preview and grid interaction
 - path validation before construction
 - impossible placements are rejected
-- visible debug route
+- placed structures automatically attack enemies in range
+- visible projectiles, enemy health, death feedback and kill gold
+- tower range preview and visible debug route
 
 ## Controls
 
-- **Left mouse:** place a temporary barricade
-- **Right mouse:** remove a barricade
-- **R:** clear all barricades
+- **Left mouse:** place an arc tower
+- **Right mouse:** remove a tower
+- **Hover a tower:** show its attack range
+- **R:** clear all towers
 - **D:** toggle route visualization
 
 ## Open in Godot

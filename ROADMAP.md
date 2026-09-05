@@ -12,13 +12,22 @@
 
 ## M2: Combat Slice
 
-- [ ] Tower targeting
-- [ ] Projectile and hit resolution
-- [ ] Enemy health and death
+Acceptance criteria for the first playable combat slice:
+
+- Placed barricades act as towers and automatically target the enemy furthest along the route within range.
+- Towers fire visible projectiles on a fixed cooldown; damage resolves only when a projectile lands.
+- The enemy displays health, dies at zero health, grants gold exactly once, then respawns for continued testing.
+- Hovering a tower shows its attack range, and shots, hits and kills have distinct readable feedback.
+- Maze placement rules and the locked 13×9 long-side camera remain unchanged.
+
+- [x] Tower targeting
+- [x] Projectile and hit resolution
+- [x] Enemy health and death
+- [x] Kill reward economy
 - [ ] Tower health and enemy breach attacks when the route is sealed
 - [ ] Reachable breach-target selection and route recalculation after destruction
-- [ ] Range preview
-- [ ] Layered impact feedback
+- [x] Range preview
+- [x] Layered impact feedback
 
 ## M3: Complete Round
 

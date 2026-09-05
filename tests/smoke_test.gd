@@ -17,6 +17,15 @@ func _initialize() -> void:
         quit(1)
         return
 
+    if instance.get("combat_model") == null:
+        push_error("Main scene did not initialize its combat model")
+        quit(1)
+        return
+    if not instance.combat_model.enemies.has("scout"):
+        push_error("Main scene must spawn the combat slice enemy")
+        quit(1)
+        return
+
     if instance.board_model.size != Vector2i(13, 9):
         push_error("The playfield must be 13 cells long and 9 cells wide")
         quit(1)
