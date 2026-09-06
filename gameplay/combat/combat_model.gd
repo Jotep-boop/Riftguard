@@ -53,8 +53,6 @@ func set_enemy_breach_target(id: String, target: Vector2i) -> void:
     if enemy.breach_target != target:
         enemy.breach_cooldown = 0.0
     enemy.breach_target = target
-    if target != NO_CELL:
-        _discard_projectiles_for(id)
 
 func _discard_projectiles_for(id: String) -> void:
     for index in range(projectiles.size() - 1, -1, -1):
@@ -131,7 +129,7 @@ func _find_target(tower_position: Vector2) -> String:
     var best_progress := -INF
     for id in enemies:
         var enemy: Dictionary = enemies[id]
-        if not enemy.alive or enemy.breach_target != NO_CELL:
+        if not enemy.alive:
             continue
         if tower_position.distance_to(enemy.position) > TOWER_RANGE:
             continue

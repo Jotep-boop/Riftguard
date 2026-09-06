@@ -26,7 +26,7 @@ Tower breach acceptance criteria:
 - A blocked enemy follows a valid route to an open cell beside a reachable frontier tower.
 - The enemy attacks that tower at a readable fixed cadence; tower health and impacts are visible.
 - Destroyed towers are removed from board and combat state, navigation is recalculated, and the enemy resumes toward the gate or selects the next breach target.
-- Towers do not shoot enemies while those enemies are actively attacking the same tower.
+- Towers target breaching enemies normally during approach and tower attacks; incoming projectiles survive breach entry, deaths reward exactly once and stop enemy attacks, and respawns synchronize with the current navigation plan.
 
 - [x] Tower targeting
 - [x] Projectile and hit resolution

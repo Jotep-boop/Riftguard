@@ -23,7 +23,7 @@ The current playable slice proves the maze and first combat loop:
 - **R:** clear all towers
 - **D:** toggle route visualization
 
-If towers completely seal the route, the scout follows the orange breach path, attacks a reachable frontier tower and destroys it before continuing toward the gate.
+If towers completely seal the route, the scout follows the orange breach path and attacks a reachable frontier tower. Towers keep firing normally during approach and breach attacks, and incoming projectiles still land. If the scout survives to destroy the tower, it replans toward the gate or the next barrier; if killed, it grants its normal reward once and respawns into the current navigation plan.
 
 ## Open in Godot
 

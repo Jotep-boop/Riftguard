@@ -90,26 +90,11 @@ func _initialize() -> void:
     instance.combat_model.update_enemy("scout", Vector2(attack_cell), 0.0)
     instance.combat_model.projectiles.clear()
     instance.combat_model.consume_events()
-    var cooldowns_before := {}
     for cell in instance.combat_model.towers:
-        if cell != target:
-            instance.combat_model.towers[cell].cooldown = 0.0
-            cooldowns_before[cell] = instance.combat_model.towers[cell].cooldown
+        instance.combat_model.towers[cell].cooldown = 0.0
     instance.combat_model.advance(0.0)
-    var attack_events: Array[Dictionary] = instance.combat_model.events.duplicate(true)
-    if not instance.combat_model.projectiles.is_empty():
-        push_error("A chained breach must not create phantom projectiles after tower destruction")
-        quit(1)
+    if not _verify_ordinary_tower_fire(instance, "Chained breach destruction"):
         return
-    if attack_events.any(func(event: Dictionary) -> bool: return event.type == "shot"):
-        push_error("A chained breach must not emit phantom shot events after tower destruction")
-        quit(1)
-        return
-    for cell in cooldowns_before:
-        if not is_equal_approx(instance.combat_model.towers[cell].cooldown, cooldowns_before[cell]):
-            push_error("A chained breach must not consume unrelated tower cooldowns")
-            quit(1)
-            return
     instance.call("_handle_combat_events")
     if instance.board_model.blocked.has(target) or instance.combat_model.towers.has(target):
         push_error("Destroyed breach tower must leave both board and combat state")
@@ -145,23 +130,32 @@ func _initialize() -> void:
         push_error("A sealed-board respawn must enter breach mode before combat advances")
         quit(1)
         return
-    var respawn_cooldowns := {}
-    for cell in instance.combat_model.towers:
-        respawn_cooldowns[cell] = instance.combat_model.towers[cell].cooldown
     instance.combat_model.advance(0.0)
-    if not instance.combat_model.projectiles.is_empty():
-        push_error("A sealed-board respawn must not create phantom projectiles")
-        quit(1)
+    if not _verify_ordinary_tower_fire(instance, "Sealed-board respawn"):
         return
-    if instance.combat_model.events.any(func(event: Dictionary) -> bool: return event.type == "shot"):
-        push_error("A sealed-board respawn must not emit phantom shot events")
-        quit(1)
-        return
-    for cell in respawn_cooldowns:
-        if not is_equal_approx(instance.combat_model.towers[cell].cooldown, respawn_cooldowns[cell]):
-            push_error("A sealed-board respawn must not consume tower cooldowns")
-            quit(1)
-            return
 
     print("PASS: main scene smoke test")
     quit(0)
+
+func _verify_ordinary_tower_fire(instance: Node, context: String) -> bool:
+    var combat = instance.combat_model
+    var expected_shots := 0
+    for cell in combat.towers:
+        var in_range: bool = Vector2(cell).distance_to(combat.enemies["scout"].position) <= combat.TOWER_RANGE
+        var expected_cooldown: float = combat.TOWER_COOLDOWN if in_range else 0.0
+        if in_range:
+            expected_shots += 1
+        if not is_equal_approx(combat.towers[cell].cooldown, expected_cooldown):
+            push_error(context + ": only in-range towers must consume normal firing cooldowns")
+            quit(1)
+            return false
+    var shots: Array = combat.events.filter(func(event: Dictionary) -> bool: return event.type == "shot")
+    if expected_shots == 0 or combat.projectiles.size() != expected_shots or shots.size() != expected_shots:
+        push_error(context + ": every in-range tower must emit a shot and projectile")
+        quit(1)
+        return false
+    if not shots.all(func(event: Dictionary) -> bool: return event.target_id == "scout"):
+        push_error(context + ": towers must target the breaching scout")
+        quit(1)
+        return false
+    return true
