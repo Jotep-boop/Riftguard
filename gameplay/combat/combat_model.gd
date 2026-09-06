@@ -1,7 +1,7 @@
 class_name CombatModel
 extends RefCounted
 
-const TOWER_RANGE := 4.0
+const TOWER_RANGE := 3.0
 const TOWER_DAMAGE := 25.0
 const TOWER_COOLDOWN := 0.65
 const PROJECTILE_DURATION := 0.18

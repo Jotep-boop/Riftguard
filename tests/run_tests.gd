@@ -24,8 +24,9 @@ func _init() -> void:
     _test_removed_tower_stops_attacking()
     _test_combat_events_are_consumed_once()
     _test_respawn_discards_stale_projectiles()
+    _test_tower_range_ends_at_three_cells()
     if failures == 0:
-        print("PASS: 17 tests")
+        print("PASS: 18 tests")
         quit(0)
     else:
         push_error("FAIL: %d assertion(s)" % failures)
@@ -179,6 +180,19 @@ func _test_respawn_discards_stale_projectiles() -> void:
     combat.add_enemy("enemy", Vector2(0, 0), 0.0, 100.0, 5)
     combat.advance(CombatModel.PROJECTILE_DURATION)
     _expect(combat.enemies["enemy"].health == 100.0, "projectiles from a prior life cannot hit a respawned enemy")
+
+func _test_tower_range_ends_at_three_cells() -> void:
+    var boundary_combat = CombatModel.new()
+    boundary_combat.add_tower(Vector2i(1, 1))
+    boundary_combat.add_enemy("boundary", Vector2(4, 1), 0.5, 100.0, 5)
+    boundary_combat.advance(0.0)
+    _expect(boundary_combat.projectiles.size() == 1, "tower reaches an enemy exactly three cells away")
+
+    var outside_combat = CombatModel.new()
+    outside_combat.add_tower(Vector2i(1, 1))
+    outside_combat.add_enemy("outside", Vector2(4.01, 1), 0.5, 100.0, 5)
+    outside_combat.advance(0.0)
+    _expect(outside_combat.projectiles.is_empty(), "tower ignores an enemy beyond three cells")
 
 func _expect(condition: bool, message: String) -> void:
     if not condition:
