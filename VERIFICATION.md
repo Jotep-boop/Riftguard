@@ -1,58 +1,89 @@
-# Complete Match verification
+# Strategic Replay verification
 
 ## Handoff
 
-Feature branch `feature/complete-match`, based on clean `main` at `2ea3a1d`. Implementation is uncommitted and unpushed for independent parent review. Verified live repo `/home/hermes/projects/Riftguard`, host `hermes`, UID/GID 1001, Godot `4.7.2.stable.official.ed1daf0bf`.
+Verified live host/user `hermes` and clean `main` at `1d5b9d9` in `/home/hermes/projects/Riftguard`, then created **`feature/strategic-replay`**. Godot is `4.7.2.stable.official.ed1daf0bf`. The implementation remains **uncommitted and unpushed**, ready for the parent's independent review. Parent owns JOPE-48; no implementation-agent tracking calls or duplicate cards.
+
+Board/pathfinder, `project.godot`, protected `AGENTS.md`, base Arc range 3 and camera constants are unchanged. No global installs, services, HA changes, licensed assets or secret output.
 
 ## Automated gate
 
-`python3 tools/verify.py` passes all six Godot checks and `git diff --check`. It checks exit status, rejects `SCRIPT ERROR`, `ERROR:` and warnings, and requires completion markers. No errors or warnings remain in the headless gate.
+`python3 tools/verify.py` passes all **seven** Godot checks plus `git diff --check`. The runner rejects `SCRIPT ERROR`, `ERROR:` and warnings even when Godot exits zero, and requires test completion markers.
 
-- Existing rules: `PASS: 24 tests` (including Arc 3-cell inclusive boundary, incoming breach hits, ordinary targeting and exactly-once death rewards).
-- Role/economy/lifecycle suite: `Match assertions failed: 0; assertions executed: 23`.
-- Integration: `Integration failures: 0; peak concurrent enemies: 6`.
+- Import and main launch: exit 0.
+- Original rules: `PASS: 24 tests`.
+- Existing role/economy/lifecycle suite: `Match assertions failed: 0; assertions executed: 23`.
+- Strategy suite: `Strategy failures: 0; assertions: 6801` (includes per-tick nonnegative-budget checks, not 6801 distinct test cases).
+- Integration: `Integration failures: 0; peak concurrent enemies: 10`.
 - Scene: `PASS: match scene, camera, HUD, placement, active wave, restart`.
-- Import and main launch exit 0.
+- No errors or warnings in the final headless log.
 
-Real-budget deterministic defense (four starting towers; affordable upgrades/reinforcements between waves):
+Coverage includes exclusive/invalid/unaffordable branches, repair/cap/refunds, actual impacts for all six branch choices, chain nearest-neighbor/finite-count/once-only rewards, splash bounds, slow duration/area, dead-primary fizzle, actual Warden slow resistance, gate damage and breach damage, ledger isolation/reset/terminal immutability and effective damage excluding overkill. Original stationary breacher priority before movement and after replanning, ordinary breach targetability, incoming projectiles, canonical spawn, adjacent/chained barriers and Arc boundary regressions remain in the required gate. Scene tests exercise U→E choice, reinforcement, preview composition, terminal economy controls and a natural six-wave ledger's layout bounds.
 
-| Wave | Outcome | Lives | Salvage at clear | Cumulative kills |
-|---|---|---:|---:|---:|
-| 1 | build | 12 | 120 | 6 |
-| 2 | build | 12 | 125 | 14 |
-| 3 | build | 12 | 156 | 21 |
-| 4 | build | 12 | 170 | 31 |
-| 5 | build | 12 | 178 | 41 |
-| 6 | won | 12 | 277 | 53 |
+## Observed RED → GREEN cycles
 
-Undefended simulation loses; restart resets budget, lives, enemies, board, wave state and pending events. Tests also cover splash limits, timed slow and real halved navigation speed, upgrade impact damage/cap, insufficient funds, invalid purchase atomicity, selling, live navigation invalidation without teleportation, two complete barriers, multi-enemy canonical spawns, tower demolition and ordinary incoming shots.
+The focused command was Godot `--headless --path . --script res://tests/strategy_tests.gd`; scene changes used `res://tests/smoke_test.gd` with a bounded timeout because an assertion aborts the coroutine rather than quitting the tree.
 
-The scene suite additionally checks tower-button theme and generated audio data, keyboard role selection, pause/speed, terminal panels and high-camera invariants. Rendered QA exposed back-row towers overlapping the status strip: a failing scene-clearance assertion reproduced it; moving only the board's projected top from 120 to 140 resolved it, preserving topology and high camera pitch.
+| Slice | Observed RED | GREEN immediately after implementation |
+|---|---|---|
+| Exclusive branch purchase | exit 1, `explicit mutually exclusive upgrade branches exist`, 1 failure | 0 failures / 8 assertions |
+| Actual branch impacts | exit 1, 7 failures: Lance latency, Chain neighbor/damage, Wide coverage/damage, Deep duration, Coldfront area | 0 failures / 17 assertions |
+| Tactical waves/Warden | exit 1, `authored tactical wave preview exists` | 0 failures / 30 assertions |
+| Measured results | exit 1, `measured match results exist` | 0 failures / 38 assertions |
+| Branch-selection scene | assertion `branch chooser is available in the actual scene` | scene PASS after integration and preview-clearance fix |
+| Full result layout | actual rendered run found result bottom 409 crossing retry at 382; scene reproduced `complete six-wave results must clear retry button` | result bottom 357; scene and full rendered run PASS |
+| Terminal preview | scene assertion `terminal preview refers to wave that ended, not an unplayed next wave` | scene PASS with current terminal wave and disabled economy controls |
 
-## Actual rendered QA
+The full existing gate was rerun after each model cycle. The new HUD initially extended below the top-row tower clearance; moving the preview upward, not moving the approved camera or board, resolved that scene assertion. Earlier failed rendered copies are retained separately, not used as final evidence.
 
-The initially unavailable display was resolved using a **parent-provisioned private authenticated Xvfb**. Frozen repo copies were exercised with real Godot GL Compatibility rendering, Mesa llvmpipe, 1280×720, and XTest mouse/keyboard input. This is actual game rendering, not a mocked image or headless screenshot.
+## Real-budget complete match simulations
 
-Actual input played six waves to **CROSSING SECURED, 12/12 lives, 53 shattered, 0 escaped**, then restarted, played undefended to **THE GATE HAS FALLEN, 0/12 lives, 12 escaped**, then restarted again. A separate explicitly inflated-budget/health fixture exercised dense adjacent/chained barriers and selling; it is not presented as a balanced player strategy.
+Both strategies start with 240 salvage, place Arc `(3,3)`, Nova `(5,5)`, Frost `(5,3)`, Arc `(7,3)`, and buy only affordable upgrades/additional defenses between waves. No injected gold, health, kills, timing or final-state shortcuts. Both finish with 12 lives, 51 kills, zero escapes, 279 salvage and 865 gross spending; peak concurrency is 10. The original integration fixture and full-results scene simulation also win.
 
-Evidence paths (outside Git):
+| Wave | Lives | Salvage at clear | Cumulative kills | Escapes | Primary wave time (s) | Alternate wave time (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 12 | 120 | 6 | 0 | 6.90 | 6.90 |
+| 2 | 12 | 125 | 14 | 0 | 5.35 | 5.12 |
+| 3 | 12 | 170 | 26 | 0 | 7.82 | 5.38 |
+| 4 | 12 | 192 | 32 | 0 | 12.23 | 11.25 |
+| 5 | 12 | 190 | 42 | 0 | 10.27 | 10.15 |
+| 6 | 12 | 279 | 51 | 0 | 14.40 | 16.27 |
 
-- `/home/hermes/riftguard-evidence/complete-match-headless.log`
-- `/home/hermes/riftguard-evidence/final/02-active-paused.png` — final projection, real input and active enemies.
-- `/home/hermes/riftguard-evidence/final/03-wave-cleared.png` — final projection, first-wave clear.
-- `/home/hermes/riftguard-evidence/final/04-restarted.png` — final projection, reset.
-- `/home/hermes/riftguard-evidence/wave-6-result.png` — complete actual-input victory (before the presentation-only status clearance fix).
-- `/home/hermes/riftguard-evidence/06-defeat.png` — actual-input defeat.
-- `/home/hermes/riftguard-evidence/dense-final/03-breach-opened.png` — final dense-board clearance and chained demolition.
-- `/home/hermes/riftguard-evidence/dense-final/04-sold-tower.png` — actual input selling in the dense fixture.
-- `/home/hermes/riftguard-evidence/render-report.json`, `final/render-report.json`, `dense-final/render-report.json` — actions and cleanup.
-- `/home/hermes/riftguard-evidence/render-game.log`, `final/render-game.log`, `dense-final/render-game.log` — renderer output.
+Primary branches finish in **56.97 combat seconds**, dealing Arc 5197.75 / Nova 2780.95 / Frost 774.90 effective damage. Alternative branches finish in **55.07 seconds**, dealing Arc 4562.05 / Nova 2396.55 / Frost 1795.00. The compact scout wave is faster with coverage, while the Warden finale takes longer: measurable tradeoffs without making one branch mandatory.
 
-Rendered logs contain **no runtime ERROR**. The only warning is the expected llvmpipe/Xvfb inability to change V-Sync mode. The bounded launchers deliberately terminate their own game processes after capture, stop/wait for Xvfb, and remove Xauthority; reports confirm display socket and lock removal. The Xvfb-only preload was never applied to Godot. No system packages/services were modified by this implementation.
+Undefended simulation loses on wave 2: **0 kills, 12 escaped, 0 lives, 270 salvage, 21.55 combat seconds**, with the last wave marked incomplete. Win/loss restart tests clear economy, enemies/projectiles, board, ledger, counters and timers; additional terminal advances cannot add rewards or alter results.
 
-## Remaining limitations / parent action
+## Actual rendered/input QA
 
-- **Audio listening is not verified**: generated PCM data and scene playback wiring pass; rendered sessions used Dummy audio. Native Windows feel/performance still needs review.
-- Balance is deliberately approachable; a competent mixed defense wins without leaks. No campaign, difficulty selector, persistent save or multiplayer.
-- `AGENTS.md` edits were denied by the protected-file tool guard. It remains unchanged. Parent must apply approved workflow/verification updates there; README and ROADMAP already distinguish internal small steps from integrated user milestones and record Multica project/milestone metadata.
-- Parent owns independent review, Multica JOPE-47, commit and push. No implementation-agent commit, push or Multica mutation occurred.
+Frozen copies run the real scene with Godot GL Compatibility / Mesa llvmpipe at 1280×720 in private authenticated Xvfb. Only Xvfb receives the relocation preload. The snapshot-only observer **reads** model/HUD state; XTest mouse/keyboard events do all natural-match purchasing, branch selection, launching and retrying. Readiness and wave completion use observed state predicates, not assumed sleeps. Source SHA256 comparison confirms final gameplay, main scene script, board, settings and tests match the verified snapshot.
+
+The final natural-input session verified **all six choices**, keyboard and mouse selection, level-3 reinforcement, selling, pause, all six waves, the visible crowned Warden, victory results, the **clicked retry button**, 2× undefended defeat and R restart. Actual render results match the alternate deterministic simulation exactly: **51 kills, 12 lives, 0 escapes, 279 salvage, 55.07 combat seconds**. Result text is fully above the retry button. Fresh captures were visually inspected.
+
+A separate explicitly labelled **4000-salvage stress fixture**, not a player-budget claim, rendered 18 branched towers in two complete adjacent/chained barriers. Actual input sold/rebuilt a back-row tower, launched the final wave, paused at the Warden, completed the breach fight and restarted. It recorded **9 kills, 0 escapes, 2 towers breached**, with readable dense branch labels and preview clearance.
+
+### Evidence outside Git
+
+- `/home/hermes/riftguard-evidence/strategic-replay-headless.log`
+- `/home/hermes/riftguard-evidence/strategic-replay-simulations.json`
+- `/home/hermes/riftguard-evidence/strategic-replay-artifact-check.log`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/snapshot-sha256.json`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/render-report.json`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/render-game.log`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/choice-chain.png` (also `choice-lance`, `choice-blast`, `choice-wide`, `choice-deep`, `choice-field`)
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/03-final-preview.png`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/05-warden.png`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/wave-6-result.png`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/06-retry-button.png`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/07-defeat-results.png`
+- `/home/hermes/riftguard-evidence/strategic-replay-verified/08-loss-restart.png`
+- `/home/hermes/riftguard-evidence/strategic-replay-dense/02-dense-warden-breach.png`
+- `/home/hermes/riftguard-evidence/strategic-replay-dense/render-report.json`
+
+Final natural/stress rendered scripts exit 0. Logs contain **no SCRIPT ERROR or ERROR**. The sole explicitly allowlisted warning is Xvfb/llvmpipe's known inability to change V-Sync mode; the first strict rendered log gate rejected it, then the exact warning—not general warnings—was classified as an expected driver limitation. Headless remains warning-free. Both launchers stop/wait for their own Godot and Xvfb, delete Xauthority, and verify socket/lock removal. Final `/proc` inspection found no remaining Godot/Xvfb processes.
+
+## Limits / parent action
+
+- Audio **listening is unverified**: generated PCM/playback wiring remains tested, rendered sessions use Dummy audio.
+- Linux software-rendered QA is not native Windows feel/performance approval.
+- Balance is deliberately approachable, not an exhaustive balance study. These competent strategies win without leaks; no difficulty selector, campaign or persistent progression was added.
+- Parent independent review and shipping remain outstanding. No commit or push was made.

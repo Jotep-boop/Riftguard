@@ -25,7 +25,7 @@ var events: Array[Dictionary] = []
 
 func add_tower(cell: Vector2i, max_health: float = TOWER_MAX_HEALTH) -> void:
     towers[cell] = {
-        "role": "arc", "level": 1, "invested": 45,
+        "role": "arc", "level": 1, "invested": 45, "branch": "",
         "cooldown": 0.0,
         "health": max_health,
         "max_health": max_health,
@@ -76,6 +76,25 @@ func consume_events() -> Array[Dictionary]:
     events.clear()
     return emitted
 
+# Snapshot branch effects at fire time: selling/upgrading cannot alter in-flight shots.
+func tower_stats(cell: Vector2i) -> Dictionary:
+    var tower: Dictionary = towers[cell]
+    var stats: Dictionary = ROLES[tower.role].duplicate()
+    stats.damage *= 1.0 + 0.65 * (tower.level - 1)
+    stats.duration = PROJECTILE_DURATION
+    stats.chain = 0.0
+    match tower.branch:
+        "lance": stats.duration = 0.09
+        "chain":
+            stats.damage *= 0.6
+            stats.chain = 1.8
+        "wide":
+            stats.damage *= 0.7
+            stats.splash = 2.2
+        "deep": stats.slow = 3.2
+        "field": stats.splash = 1.3
+    return stats
+
 func advance(delta: float) -> void:
     for enemy in enemies.values():
         enemy.slow_timer = maxf(0.0, enemy.slow_timer - delta)
@@ -86,18 +105,18 @@ func advance(delta: float) -> void:
         tower.cooldown = maxf(0.0, tower.cooldown - delta)
         if tower.cooldown > 0.0:
             continue
-        var stats: Dictionary = ROLES[tower.role]
+        var stats := tower_stats(cell)
         var target_id := _find_target(Vector2(cell), stats.range)
         if target_id.is_empty():
             continue
         projectiles.append({
             "origin": Vector2(cell),
             "role": tower.role,
-            "damage": stats.damage * (1.0 + 0.65 * (tower.level - 1)),
+            "damage": stats.damage, "chain": stats.chain,
             "splash": stats.splash, "slow": stats.slow,
             "target_id": target_id,
-            "remaining": PROJECTILE_DURATION,
-            "duration": PROJECTILE_DURATION,
+            "remaining": stats.duration,
+            "duration": stats.duration,
         })
         tower.cooldown = stats.cadence
         events.append({"type": "shot", "tower_cell": cell, "target_id": target_id})
@@ -117,9 +136,10 @@ func _advance_breach_attacks(delta: float) -> void:
         if enemy.breach_cooldown > 0.0001:
             continue
         var tower: Dictionary = towers[target]
-        tower.health = maxf(0.0, tower.health - ENEMY_BREACH_DAMAGE)
+        var damage: float = enemy.get("breach_damage", ENEMY_BREACH_DAMAGE)
+        tower.health = maxf(0.0, tower.health - damage)
         enemy.breach_cooldown = ENEMY_BREACH_COOLDOWN
-        events.append({"type": "tower_hit", "tower_cell": target, "damage": ENEMY_BREACH_DAMAGE})
+        events.append({"type": "tower_hit", "tower_cell": target, "damage": damage})
         if tower.health <= 0.0:
             towers.erase(target)
             events.append({"type": "tower_destroyed", "tower_cell": target})
@@ -135,13 +155,23 @@ func _advance_projectiles(delta: float) -> void:
         if not enemies.has(target_id) or not enemies[target_id].alive:
             continue
         var center: Vector2 = enemies[target_id].position
+        var secondary := ""
+        var nearest: float = projectile.chain
+        if nearest > 0:
+            for id in enemies:
+                var distance: float = enemies[id].position.distance_to(center)
+                if id != target_id and enemies[id].alive and distance <= nearest:
+                    if secondary == "" or distance < nearest:
+                        secondary = id
+                        nearest = distance
         for id in enemies:
             var enemy: Dictionary = enemies[id]
-            if not enemy.alive or (id != target_id and (projectile.splash <= 0 or enemy.position.distance_to(center) > projectile.splash)):
+            if not enemy.alive or (id != target_id and id != secondary and (projectile.splash <= 0 or enemy.position.distance_to(center) > projectile.splash)):
                 continue
-            enemy.health = maxf(0.0, enemy.health - projectile.damage)
+            var dealt: float = minf(enemy.health, projectile.damage)
+            enemy.health = maxf(0.0, enemy.health - dealt)
             enemy.slow_timer = maxf(enemy.slow_timer, projectile.slow)
-            events.append({"type": "hit", "target_id": id, "position": enemy.position, "damage": projectile.damage, "role": projectile.role})
+            events.append({"type": "hit", "target_id": id, "position": enemy.position, "damage": dealt, "role": projectile.role})
             if enemy.health <= 0.0:
                 enemy.alive = false
                 gold += enemy.reward

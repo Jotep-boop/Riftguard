@@ -12,6 +12,7 @@ checks = [
     ("import", ["--editor", "--quit"], None),
     ("rules", ["--script", "res://tests/run_tests.gd"], "PASS: 24 tests"),
     ("match", ["--script", "res://tests/match_tests.gd"], "Match assertions failed: 0"),
+    ("strategy", ["--script", "res://tests/strategy_tests.gd"], "Strategy failures: 0"),
     ("integration", ["--script", "res://tests/integration_tests.gd"], "Integration failures: 0"),
     ("scene", ["--script", "res://tests/smoke_test.gd"], "PASS: match scene"),
     ("launch", ["--quit-after", "60"], None),
@@ -27,5 +28,5 @@ result = subprocess.run(["git", "diff", "--check"], cwd=ROOT, capture_output=Tru
 print(result.stdout + result.stderr)
 if result.returncode:
     failed.append("diff")
-print("VERIFIED: all six Godot checks and diff hygiene passed" if not failed else f"FAILED: {failed}")
+print("VERIFIED: all seven Godot checks and diff hygiene passed" if not failed else f"FAILED: {failed}")
 sys.exit(bool(failed))
