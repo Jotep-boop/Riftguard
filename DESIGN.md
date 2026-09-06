@@ -8,7 +8,7 @@ Guard unstable rifts by constructing magical defenses that reshape the enemy rou
 
 1. Inspect the next enemy wave.
 2. Spend limited resources on towers and upgrades.
-3. Shape a legal route through the build zone.
+3. Shape a longer route through the build zone; sealed routes invite tower demolition.
 4. Survive the wave and study weak points.
 5. Adapt the maze and grow a distinct defensive faction.
 
@@ -29,7 +29,7 @@ The first vertical slice contains one board, one faction, three tower roles and 
 
 ## Blocking and breach behavior
 
-Tower placement is unrestricted. If construction seals every normal route, enemies identify a reachable frontier tower, advance to an open cell beside it and attack until navigation opens. If another barrier remains, they select the next reachable breach target. A blocked route is therefore a costly tactical choice, not an invalid input, and enemies must never become silently trapped. Breaching enemies remain ordinary tower targets while approaching and attacking towers, using the normal range, route-progress priority and firing cooldown. Entering or synchronizing breach mode preserves incoming projectiles and their impact timing. Lethal hits use the normal death and exactly-once gold reward flow; dead enemies stop attacking towers. Respawn clears only the prior life's projectiles and synchronizes the fresh enemy with the current breach plan. Sealed defenses may kill and reward repeated spawns; breach no longer guarantees survival or that a wall will open.
+Route-sealing placement is allowed within the budget, except on endpoints, existing towers and cells occupied or reserved by moving enemies. If construction seals every normal route, enemies identify a reachable frontier tower, advance to an open cell beside it and attack until navigation opens. If another barrier remains, they select the next reachable breach target. A blocked route is therefore a costly tactical choice, not an invalid input, and enemies must never become silently trapped. Breaching enemies remain ordinary tower targets while approaching and attacking towers, using the normal range, route-progress priority and firing cooldown. Entering or synchronizing breach mode preserves incoming projectiles and their impact timing. Lethal hits use the normal death and exactly-once gold reward flow; dead enemies stop attacking towers. Each finite-wave spawn has a unique ID and synchronizes from the canonical source with the current breach plan. Sealed defenses may kill and reward wave enemies; breach does not guarantee survival or that a wall will open. The prototype infinite respawn loop is retired.
 
 ## Presentation
 

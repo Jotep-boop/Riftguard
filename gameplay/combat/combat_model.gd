@@ -11,6 +11,12 @@ const ENEMY_BREACH_COOLDOWN := 0.75
 const BREACH_ATTACK_RANGE := 1.01
 const NO_CELL := Vector2i(-1, -1)
 
+const ROLES := {
+    "arc": {"cost": 45, "damage": 25.0, "range": 3.0, "cadence": 0.65, "splash": 0.0, "slow": 0.0},
+    "nova": {"cost": 65, "damage": 20.0, "range": 2.7, "cadence": 1.1, "splash": 1.3, "slow": 0.0},
+    "frost": {"cost": 55, "damage": 8.0, "range": 3.0, "cadence": 0.85, "splash": 0.0, "slow": 1.6},
+}
+
 var towers: Dictionary = {}
 var enemies: Dictionary = {}
 var projectiles: Array[Dictionary] = []
@@ -19,10 +25,15 @@ var events: Array[Dictionary] = []
 
 func add_tower(cell: Vector2i, max_health: float = TOWER_MAX_HEALTH) -> void:
     towers[cell] = {
+        "role": "arc", "level": 1, "invested": 45,
         "cooldown": 0.0,
         "health": max_health,
         "max_health": max_health,
     }
+
+func configure_tower(cell: Vector2i, role: String) -> void:
+    towers[cell].role = role
+    towers[cell].invested = ROLES[role].cost
 
 func remove_tower(cell: Vector2i) -> void:
     towers.erase(cell)
@@ -36,6 +47,7 @@ func add_enemy(id: String, position: Vector2, route_progress: float, max_health:
         "max_health": max_health,
         "reward": reward,
         "alive": true,
+        "slow_timer": 0.0,
         "breach_target": NO_CELL,
         "breach_cooldown": 0.0,
     }
@@ -65,6 +77,8 @@ func consume_events() -> Array[Dictionary]:
     return emitted
 
 func advance(delta: float) -> void:
+    for enemy in enemies.values():
+        enemy.slow_timer = maxf(0.0, enemy.slow_timer - delta)
     _advance_projectiles(delta)
     _advance_breach_attacks(delta)
     for cell in towers:
@@ -72,16 +86,20 @@ func advance(delta: float) -> void:
         tower.cooldown = maxf(0.0, tower.cooldown - delta)
         if tower.cooldown > 0.0:
             continue
-        var target_id := _find_target(Vector2(cell))
+        var stats: Dictionary = ROLES[tower.role]
+        var target_id := _find_target(Vector2(cell), stats.range)
         if target_id.is_empty():
             continue
         projectiles.append({
             "origin": Vector2(cell),
+            "role": tower.role,
+            "damage": stats.damage * (1.0 + 0.65 * (tower.level - 1)),
+            "splash": stats.splash, "slow": stats.slow,
             "target_id": target_id,
             "remaining": PROJECTILE_DURATION,
             "duration": PROJECTILE_DURATION,
         })
-        tower.cooldown = TOWER_COOLDOWN
+        tower.cooldown = stats.cadence
         events.append({"type": "shot", "tower_cell": cell, "target_id": target_id})
 
 func _advance_breach_attacks(delta: float) -> void:
@@ -116,22 +134,27 @@ func _advance_projectiles(delta: float) -> void:
         var target_id: String = projectile.target_id
         if not enemies.has(target_id) or not enemies[target_id].alive:
             continue
-        var enemy: Dictionary = enemies[target_id]
-        enemy.health = maxf(0.0, enemy.health - TOWER_DAMAGE)
-        events.append({"type": "hit", "target_id": target_id, "damage": TOWER_DAMAGE})
-        if enemy.health <= 0.0:
-            enemy.alive = false
-            gold += enemy.reward
-            events.append({"type": "death", "target_id": target_id, "reward": enemy.reward})
+        var center: Vector2 = enemies[target_id].position
+        for id in enemies:
+            var enemy: Dictionary = enemies[id]
+            if not enemy.alive or (id != target_id and (projectile.splash <= 0 or enemy.position.distance_to(center) > projectile.splash)):
+                continue
+            enemy.health = maxf(0.0, enemy.health - projectile.damage)
+            enemy.slow_timer = maxf(enemy.slow_timer, projectile.slow)
+            events.append({"type": "hit", "target_id": id, "position": enemy.position, "damage": projectile.damage, "role": projectile.role})
+            if enemy.health <= 0.0:
+                enemy.alive = false
+                gold += enemy.reward
+                events.append({"type": "death", "target_id": id, "position": enemy.position, "reward": enemy.reward})
 
-func _find_target(tower_position: Vector2) -> String:
+func _find_target(tower_position: Vector2, radius: float = TOWER_RANGE) -> String:
     var best_id := ""
     var best_progress := -INF
     for id in enemies:
         var enemy: Dictionary = enemies[id]
         if not enemy.alive:
             continue
-        if tower_position.distance_to(enemy.position) > TOWER_RANGE:
+        if tower_position.distance_to(enemy.position) > radius:
             continue
         if enemy.route_progress > best_progress:
             best_progress = enemy.route_progress

@@ -1,185 +1,370 @@
 extends Node2D
-
-const BoardModelScript = preload("res://gameplay/board/board_model.gd")
-const CombatModelScript = preload("res://gameplay/combat/combat_model.gd")
-
+const Match = preload("res://gameplay/match/match_model.gd")
+const Combat = preload("res://gameplay/combat/combat_model.gd")
 const BOARD_SIZE := Vector2i(13, 9)
-const START_CELL := Vector2i(0, 4)
-const GOAL_CELL := Vector2i(12, 4)
 const BOARD_CENTER_X := 650.0
-const BOARD_TOP_Y := 110.0
+const BOARD_TOP_Y := 140.0
 const BOARD_BOTTOM_Y := 610.0
 const TOP_CELL_WIDTH := 60.0
 const BOTTOM_CELL_WIDTH := 74.0
 const BLOCK_HEIGHT := 20.0
-const ENEMY_SPEED := 125.0
-const ENEMY_ID := "scout"
-const ENEMY_MAX_HEALTH := 100.0
-const ENEMY_REWARD := 12
-const RESPAWN_DELAY := 0.9
-
-const COLOR_FLOOR_A := Color("#26384b")
-const COLOR_FLOOR_B := Color("#2b4154")
-const COLOR_GRID := Color("#7693a6")
-const COLOR_ROUTE := Color("#59d8ee")
-const COLOR_VALID := Color("#58e6ad")
-const COLOR_INVALID := Color("#ff6b74")
-const COLOR_RIFT := Color("#d852ff")
-const COLOR_GATE := Color("#ffc85c")
-const COLOR_TOWER := Color("#4f92a3")
-const COLOR_PROJECTILE := Color("#fff3a8")
-const COLOR_BREACH := Color("#ff8a5c")
-
+const COLORS := {"arc": Color("72e9cd"), "nova": Color("ffb566"), "frost": Color("8abfff")}
+var match_model = Match.new()
 var board_model
 var combat_model
 var hovered_cell := Vector2i(-1, -1)
+var selected_cell := Vector2i(-1, -1)
+var selected_role := "arc"
 var show_route := true
-var enemy_position := Vector2.ZERO
-var enemy_route_index := 0
-var enemy_segment_progress := 0.0
-var enemy_respawn_timer := 0.0
-var hit_flash_timer := 0.0
-var death_burst_timer := 0.0
-var breach_swing_timer := 0.0
-var last_breach_target := Vector2i(-1, -1)
-var tower_hit_flashes: Dictionary = {}
+var paused := false
+var speed := 1.0
+var accumulator := 0.0
+var clock := 0.0
+var effects: Array[Dictionary] = []
+var role_buttons: Array[Button] = []
+var stats_label: Label
+var info_label: Label
 var status_label: Label
-var route_label: Label
-var gold_label: Label
-var enemy_label: Label
+var phase_label: Label
+var start_button: Button
+var upgrade_button: Button
+var sell_button: Button
+var overlay: Panel
+var outcome_label: Label
+var audio_players: Array[AudioStreamPlayer] = []
+var tones: Dictionary = {}
+var muted := false
 
 func _ready() -> void:
-    board_model = BoardModelScript.new(BOARD_SIZE, START_CELL, GOAL_CELL)
-    combat_model = CombatModelScript.new()
+    board_model = match_model.board
+    combat_model = match_model.combat
     _build_interface()
-    _spawn_enemy()
-    queue_redraw()
+    _build_audio()
+    _update_hud()
 
 func _process(delta: float) -> void:
-    hit_flash_timer = maxf(0.0, hit_flash_timer - delta)
-    death_burst_timer = maxf(0.0, death_burst_timer - delta)
-    breach_swing_timer = maxf(0.0, breach_swing_timer - delta)
-    for cell in tower_hit_flashes.keys():
-        tower_hit_flashes[cell] = maxf(0.0, tower_hit_flashes[cell] - delta)
-        if tower_hit_flashes[cell] <= 0.0:
-            tower_hit_flashes.erase(cell)
-    if enemy_respawn_timer > 0.0:
-        enemy_respawn_timer -= delta
-        if enemy_respawn_timer <= 0.0:
-            _spawn_enemy()
-    elif _enemy_is_alive():
-        _advance_enemy(delta)
-        combat_model.update_enemy(ENEMY_ID, _enemy_grid_position(), _enemy_route_progress())
-        _sync_breach_target()
-    combat_model.advance(delta)
-    _handle_combat_events()
+    clock += delta
+    if not paused:
+        accumulator += minf(delta, 0.2) * speed
+        while accumulator >= 1.0 / 60.0:
+            match_model.advance(1.0 / 60.0)
+            accumulator -= 1.0 / 60.0
+    for event in match_model.consume_events():
+        if event.type in ["hit", "death", "leak"]:
+            effects.append({"position": event.position, "life": 0.45, "type": event.type})
+        elif event.type == "tower_destroyed":
+            effects.append({"position": Vector2(event.tower_cell), "life": 0.45, "type": "leak"})
+            _status("Tower breached! The swarm has opened a new route.")
+        elif event.type == "build":
+            _status("Wave cleared. +30 salvage. Rebuild, upgrade, then launch the next wave.")
+        if event.type in tones:
+            _sound(event.type)
+    for effect in effects:
+        effect.life -= delta
+    effects = effects.filter(func(e: Dictionary) -> bool: return e.life > 0)
     _update_hud()
     queue_redraw()
 
 func _unhandled_input(event: InputEvent) -> void:
     if event is InputEventMouseMotion:
         hovered_cell = _cell_at_point(event.position)
-        queue_redraw()
     elif event is InputEventMouseButton and event.pressed:
         hovered_cell = _cell_at_point(event.position)
         if event.button_index == MOUSE_BUTTON_LEFT:
             _place_hovered_tower()
         elif event.button_index == MOUSE_BUTTON_RIGHT:
-            _remove_hovered_tower()
+            selected_cell = hovered_cell
+            _sell()
     elif event is InputEventKey and event.pressed and not event.echo:
-        if event.keycode == KEY_R:
-            board_model.clear_blockers()
-            for cell in combat_model.towers.keys():
-                combat_model.remove_tower(cell)
-            _set_status("Maze cleared. The rift has a straight shot again.", COLOR_ROUTE)
-            _reset_enemy_movement()
-        elif event.keycode == KEY_D:
-            show_route = not show_route
-            route_label.text = "Route overlay: %s" % ("ON" if show_route else "OFF")
-        queue_redraw()
+        match event.keycode:
+            KEY_1: _select_role("arc")
+            KEY_2: _select_role("nova")
+            KEY_3: _select_role("frost")
+            KEY_SPACE: _start_wave()
+            KEY_U: _upgrade()
+            KEY_X: _sell()
+            KEY_D: show_route = not show_route
+            KEY_P: paused = not paused
+            KEY_F: speed = 2.0 if speed == 1 else 1.0
+            KEY_M: muted = not muted
+            KEY_R: _restart()
+
+func _place_hovered_tower() -> void:
+    if combat_model.towers.has(hovered_cell):
+        selected_cell = hovered_cell
+    elif match_model.place(hovered_cell, selected_role):
+        selected_cell = hovered_cell
+        _status("%s deployed. Seal routes at your own risk: enemies attack blocking towers." % selected_role.capitalize())
+        _sound("build")
+    else:
+        _status("Cannot build: check salvage, occupied cells, rift and gate.")
+
+func _select_role(role: String) -> void:
+    selected_role = role
+    selected_cell = Vector2i(-1, -1)
+
+func _upgrade() -> void:
+    if match_model.upgrade(selected_cell):
+        _status("Tower upgraded and repaired. Damage increased; range unchanged.")
+        _sound("build")
+    else:
+        _status("Select a tower with LMB. Upgrades cost 35 / 70; maximum level is 3.")
+
+func _sell() -> void:
+    if match_model.sell(selected_cell):
+        _status("Tower sold for 70% of its total investment.")
+        selected_cell = Vector2i(-1, -1)
+        _sound("build")
+
+func _start_wave() -> void:
+    if match_model.start_wave():
+        paused = false
+        _status("Defend the gate. You can build, upgrade and sell during the wave.")
+
+func _restart() -> void:
+    match_model.restart()
+    board_model = match_model.board
+    combat_model = match_model.combat
+    selected_cell = Vector2i(-1, -1)
+    effects.clear()
+    paused = false
+    speed = 1
+    accumulator = 0
+    _status("New defense. Build near the route, combine tower roles, then press SPACE.")
+    _update_hud()
 
 func _draw() -> void:
-    _draw_board()
+    draw_rect(Rect2(0, 0, 1280, 720), Color("101925"))
+    draw_rect(Rect2(0, 0, 1280, 98), Color("192938"))
+    draw_rect(Rect2(0, 622, 1280, 98), Color("192938"))
+    for y in range(BOARD_SIZE.y):
+        for x in range(BOARD_SIZE.x):
+            var tile := _tile_polygon(Vector2i(x, y), 0.97)
+            draw_colored_polygon(tile, Color("293e50") if (x+y)%2 else Color("26394b"))
+            draw_polyline(_close_polygon(tile), Color("587284"), 1.0, true)
     if show_route:
-        _draw_route()
-    _draw_endpoints()
-    _draw_range_preview()
-    _draw_towers()
-    _draw_hover_preview()
-    _draw_projectiles()
-    _draw_enemy()
-
-func _draw_board() -> void:
-    for depth in range(BOARD_SIZE.y):
-        for longitudinal in range(BOARD_SIZE.x):
-            var cell := Vector2i(longitudinal, depth)
-            var fill := COLOR_FLOOR_A if (longitudinal + depth) % 2 == 0 else COLOR_FLOOR_B
-            var tile := _tile_polygon(cell, 1.0)
-            draw_colored_polygon(tile, fill)
-            draw_polyline(_close_polygon(tile), COLOR_GRID, 1.7, true)
-
-func _draw_route() -> void:
-    var movement_route := _movement_route()
-    if movement_route.is_empty():
-        return
-    var points := PackedVector2Array()
-    for cell in movement_route:
-        points.append(_cell_to_world(cell) - Vector2(0.0, 7.0))
-    var route_color := COLOR_ROUTE if not board_model.route.is_empty() else COLOR_BREACH
-    if points.size() >= 2:
-        draw_polyline(points, Color(0.08, 0.18, 0.24, 0.9), 10.0, true)
-        draw_polyline(points, Color(route_color, 0.9), 3.0, true)
-    for point in points:
-        draw_circle(point, 3.5, Color.WHITE)
-    if board_model.route.is_empty() and board_model.breach_target != Vector2i(-1, -1):
-        var target := _cell_to_world(board_model.breach_target) - Vector2(0.0, BLOCK_HEIGHT + 7.0)
-        draw_arc(target, 15.0, 0.0, TAU, 24, COLOR_BREACH, 3.0, true)
-
-func _draw_endpoints() -> void:
-    var rift_center := _cell_to_world(START_CELL) - Vector2(0.0, 7.0)
-    draw_circle(rift_center, 25.0, Color(COLOR_RIFT, 0.13))
-    draw_circle(rift_center, 16.0, Color("#6e238f"))
-    draw_arc(rift_center, 19.0, 0.0, TAU, 32, COLOR_RIFT, 3.0, true)
-
-    var gate_center := _cell_to_world(GOAL_CELL)
-    var gate_tile := _scaled_polygon(_tile_polygon(GOAL_CELL, 1.0), gate_center, 0.53)
-    draw_colored_polygon(gate_tile, Color("#6b5126"))
-    draw_polyline(_close_polygon(gate_tile), COLOR_GATE, 3.0, true)
-
-func _draw_range_preview() -> void:
-    if not combat_model.towers.has(hovered_cell):
-        return
-    var ring := PackedVector2Array()
-    for step in range(49):
-        var angle := TAU * float(step) / 48.0
-        var point := Vector2(hovered_cell) + Vector2(cos(angle), sin(angle)) * CombatModelScript.TOWER_RANGE
-        ring.append(_grid_position_to_world(point))
-    draw_colored_polygon(ring, Color(COLOR_ROUTE, 0.055))
-    draw_polyline(ring, Color(COLOR_ROUTE, 0.72), 2.0, true)
-
-func _draw_towers() -> void:
-    for depth in range(BOARD_SIZE.y):
-        for cell in board_model.blocked.keys():
-            if cell.y != depth:
+        var route := PackedVector2Array()
+        for cell in board_model.active_route():
+            route.append(_cell_to_world(cell))
+        if route.size() > 1:
+            draw_polyline(route, Color(0.35, 0.85, 0.88, 0.4), 4, true)
+    for endpoint in [board_model.start, board_model.goal]:
+        var pos := _cell_to_world(endpoint)
+        var color := Color("d77cfa") if endpoint == board_model.start else Color("ffd07c")
+        draw_circle(pos, 27, Color(color, 0.12))
+        draw_arc(pos, 20 + sin(clock * 2) * 2, 0, TAU, 40, color, 3, true)
+        draw_arc(pos, 13, clock, clock + PI * 1.5, 32, color, 2, true)
+    var focus := hovered_cell if _inside_board(hovered_cell) else selected_cell
+    if _inside_board(focus):
+        var role: String = combat_model.towers[focus].role if combat_model.towers.has(focus) else selected_role
+        var ring := PackedVector2Array()
+        for step in range(65):
+            var angle := TAU * step / 64.0
+            ring.append(_grid_position_to_world(Vector2(focus) + Vector2(cos(angle), sin(angle)) * Combat.ROLES[role].range))
+        draw_colored_polygon(ring, Color(COLORS[role], 0.05))
+        draw_polyline(ring, Color(COLORS[role], 0.55), 2, true)
+    # Row-based painter order keeps creatures and towers readable in dense mazes.
+    for y in range(BOARD_SIZE.y):
+        for cell in combat_model.towers:
+            if cell.y != y:
                 continue
-            var tower: Dictionary = combat_model.towers.get(cell, {})
-            var tower_color := Color.WHITE if tower_hit_flashes.has(cell) else COLOR_TOWER
-            _draw_prism(cell, tower_color, 1.0)
-            var turret := _cell_to_world(cell) - Vector2(0.0, BLOCK_HEIGHT + 7.0)
-            draw_circle(turret, 8.0, Color("#b7edf3"))
-            draw_circle(turret, 4.0, COLOR_PROJECTILE)
-            draw_arc(turret, 9.5, 0.0, TAU, 18, Color("#24566a"), 2.0, true)
-            if not tower.is_empty() and (tower.health < tower.max_health or cell == board_model.breach_target):
-                var ratio: float = tower.health / tower.max_health
-                var bar_position := turret + Vector2(-18.0, -18.0)
-                draw_rect(Rect2(bar_position, Vector2(36.0, 5.0)), Color("#321f32"))
-                draw_rect(Rect2(bar_position, Vector2(36.0 * ratio, 5.0)), COLOR_BREACH)
+            var tower: Dictionary = combat_model.towers[cell]
+            var color: Color = COLORS[tower.role]
+            _draw_prism(cell, color.darkened(0.35), 0.82)
+            var pos := _cell_to_world(cell) - Vector2(0, 27)
+            if tower.role == "arc":
+                draw_line(pos + Vector2(-7, 3), pos + Vector2(7, -7), color, 6, true)
+            elif tower.role == "nova":
+                draw_circle(pos, 10, color)
+                draw_circle(pos, 5, Color("293040"))
+            else:
+                draw_colored_polygon(PackedVector2Array([pos+Vector2(0,-13),pos+Vector2(9,0),pos+Vector2(0,10),pos+Vector2(-9,0)]),color)
+            for level in range(tower.level):
+                draw_circle(pos + Vector2(-8 + level * 8, 15), 2, Color.WHITE)
+            if cell == selected_cell:
+                draw_polyline(_close_polygon(_tile_polygon(cell, 0.9)), Color.WHITE, 2, true)
+            if tower.health < tower.max_health:
+                _health_bar(pos + Vector2(-17, -22), tower.health / tower.max_health, Color("ff986e"))
+        for enemy in combat_model.enemies.values():
+            if clampi(roundi(enemy.position.y), 0, 8) == y:
+                _draw_creature(enemy)
+    if _inside_board(hovered_cell) and not combat_model.towers.has(hovered_cell):
+        _draw_prism(hovered_cell, Color(Color("72e9cd") if match_model.can_place(hovered_cell, selected_role) else Color("ff6d85"), 0.45), 0.82)
+    for shot in combat_model.projectiles:
+        if not combat_model.enemies.has(shot.target_id):
+            continue
+        var from := _grid_position_to_world(shot.origin) - Vector2(0, 27)
+        var to := _grid_position_to_world(combat_model.enemies[shot.target_id].position) - Vector2(0, 15)
+        var pos := from.lerp(to, 1 - shot.remaining / shot.duration)
+        draw_line(from, pos, Color(COLORS[shot.role], 0.35), 2, true)
+        draw_circle(pos, 5, COLORS[shot.role])
+    for effect in effects:
+        var pos := _grid_position_to_world(effect.position) - Vector2(0, 15)
+        var color := Color("ffb566") if effect.type == "leak" else Color("e5b4fa")
+        var radius: float = (1 - effect.life / 0.45) * (32 if effect.type == "death" else 18)
+        draw_arc(pos, maxf(1, radius), 0, TAU, 24, Color(color, effect.life / 0.45), 2, true)
+        if effect.type == "death":
+            for n in range(6):
+                var angle := n * TAU / 6
+                draw_circle(pos + Vector2(cos(angle), sin(angle)) * radius, 3, Color(color, effect.life / 0.45))
 
-func _draw_hover_preview() -> void:
-    if not _inside_board(hovered_cell) or board_model.blocked.has(hovered_cell):
+func _draw_creature(enemy: Dictionary) -> void:
+    var pos := _grid_position_to_world(enemy.position)
+    draw_set_transform(pos + Vector2(0, 5), 0, Vector2(1.4, 0.45))
+    draw_circle(Vector2.ZERO, 12, Color(0, 0, 0, 0.3))
+    draw_set_transform(Vector2.ZERO)
+    pos.y -= 16 + sin(clock * 8 + enemy.travelled) * 2
+    var color := Color("df80e7")
+    if enemy.kind == "brute":
+        color = Color("f18786")
+        draw_colored_polygon(PackedVector2Array([pos+Vector2(-14,-10),pos+Vector2(8,-15),pos+Vector2(16,5),pos+Vector2(0,14),pos+Vector2(-14,8)]),color)
+    elif enemy.kind == "runner":
+        color = Color("f5d083")
+        draw_colored_polygon(PackedVector2Array([pos+Vector2(-12,-9),pos+Vector2(15,0),pos+Vector2(-12,9),pos+Vector2(-5,0)]),color)
+    else:
+        draw_circle(pos, 11, color)
+        draw_arc(pos, 14, 0, TAU, 24, color.darkened(0.4), 2, true)
+    draw_circle(pos + Vector2(5, -3), 3, Color("fff5e7"))
+    if enemy.slow_timer > 0:
+        draw_arc(pos, 18, 0, TAU, 24, COLORS.frost, 2, true)
+    _health_bar(pos + Vector2(-17, -25), enemy.health / enemy.max_health, color)
+    if enemy.breach_target != Vector2i(-1, -1) and enemy.position.distance_to(Vector2(enemy.breach_target)) <= 1.01:
+        draw_line(pos, _cell_to_world(enemy.breach_target) - Vector2(0, 25), Color(1, 0.5, 0.3, 0.5), 2, true)
+
+func _health_bar(pos: Vector2, ratio: float, color: Color) -> void:
+    draw_rect(Rect2(pos, Vector2(34, 4)), Color("101925"))
+    draw_rect(Rect2(pos, Vector2(34 * ratio, 4)), color)
+
+func _build_interface() -> void:
+    _label("RIFTGUARD", Vector2(24, 13), 29, Color("edf6ff"))
+    _label("THE LAST CROSSING  /  MAZE DEFENSE", Vector2(26, 50), 11, Color("91adbf"))
+    stats_label = _label("", Vector2(350, 18), 22, Color("ffd07c"))
+    phase_label = _label("", Vector2(350, 52), 14, Color("afc6d7"))
+    start_button = _button("SPACE  /  Launch wave", Vector2(995, 20), Vector2(260, 48), _start_wave)
+    var titles := ["1  ARC  /  45", "2  NOVA  /  65", "3  FROST  /  55"]
+    var roles := ["arc", "nova", "frost"]
+    for i in range(3):
+        var button := _button(titles[i], Vector2(24 + i * 183, 631), Vector2(174, 38), _select_role.bind(roles[i]))
+        button.modulate = COLORS[roles[i]]
+        role_buttons.append(button)
+    upgrade_button = _button("U  Upgrade", Vector2(582, 631), Vector2(185, 38), _upgrade)
+    sell_button = _button("X  Sell", Vector2(779, 631), Vector2(155, 38), _sell)
+    _button("P  Pause", Vector2(946, 631), Vector2(145, 38), func(): paused = not paused)
+    _button("F  Speed", Vector2(1103, 631), Vector2(150, 38), func(): speed = 2.0 if speed == 1 else 1.0)
+    info_label = _label("", Vector2(24, 674), 13, Color("c5d9e5"))
+    status_label = _label("Build near the route. Combine tower roles, then launch the first wave.", Vector2(24, 100), 13, Color("a4c7d8"))
+    _label("RIFT", Vector2(205, 386), 12, Color("d77cfa"))
+    _label("GATE", Vector2(1060, 386), 12, Color("ffd07c"))
+    overlay = Panel.new()
+    overlay.position = Vector2(385, 245)
+    overlay.size = Vector2(510, 220)
+    var panel_style := StyleBoxFlat.new()
+    panel_style.bg_color = Color("172a3a")
+    panel_style.border_color = Color("72e9cd")
+    panel_style.set_border_width_all(2)
+    panel_style.set_corner_radius_all(10)
+    overlay.add_theme_stylebox_override("panel", panel_style)
+    add_child(overlay)
+    outcome_label = Label.new()
+    outcome_label.position = Vector2(25, 22)
+    outcome_label.add_theme_font_size_override("font_size", 23)
+    overlay.add_child(outcome_label)
+    var restart := Button.new()
+    restart.text = "R  /  Defend again"
+    restart.position = Vector2(135, 145)
+    restart.size = Vector2(240, 48)
+    restart.pressed.connect(_restart)
+    overlay.add_child(restart)
+
+func _label(text: String, pos: Vector2, size: int, color: Color) -> Label:
+    var label := Label.new()
+    label.text = text
+    label.position = pos
+    label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    label.add_theme_font_size_override("font_size", size)
+    label.add_theme_color_override("font_color", color)
+    add_child(label)
+    return label
+
+func _button(text: String, pos: Vector2, size: Vector2, action: Callable) -> Button:
+    var button := Button.new()
+    button.text = text
+    button.position = pos
+    button.size = size
+    button.focus_mode = Control.FOCUS_NONE
+    button.add_theme_font_size_override("font_size", 15)
+    for state in ["normal", "hover", "pressed", "disabled"]:
+        var style := StyleBoxFlat.new()
+        style.bg_color = Color("233d50") if state == "normal" else Color("35566c")
+        if state == "disabled":
+            style.bg_color = Color("1a2936")
+        style.border_color = Color("547c92")
+        style.set_border_width_all(1)
+        style.set_corner_radius_all(5)
+        button.add_theme_stylebox_override(state, style)
+    button.add_theme_color_override("font_color", Color("edf6ff"))
+    button.add_theme_color_override("font_disabled_color", Color("6e8799"))
+    button.pressed.connect(action)
+    add_child(button)
+    return button
+
+func _status(text: String) -> void:
+    status_label.text = text
+
+func _update_hud() -> void:
+    stats_label.text = "SALVAGE  %d     GATE  %d / 12     WAVE  %d / 6" % [combat_model.gold, match_model.lives, match_model.wave]
+    phase_label.text = "%s  |  %d active  /  %d incoming  |  %dx%s" % [match_model.phase.to_upper(), combat_model.enemies.size(), match_model.pending.size(), int(speed), "  PAUSED" if paused else ""]
+    start_button.disabled = match_model.phase != "build"
+    start_button.text = "SPACE  /  Launch wave %d" % mini(6, match_model.wave + 1)
+    for i in range(3):
+        role_buttons[i].text = (["1  ARC  /  45", "2  NOVA  /  65", "3  FROST  /  55"][i]) + ("  ◀" if ["arc", "nova", "frost"][i] == selected_role else "")
+    var selected: bool = combat_model.towers.has(selected_cell)
+    upgrade_button.disabled = not selected
+    sell_button.disabled = not selected
+    if selected:
+        var tower: Dictionary = combat_model.towers[selected_cell]
+        info_label.text = "%s L%d  |  HP %d/%d  |  Range %.1f  |  LMB select/build · RMB sell · D route · M mute · R restart" % [tower.role.to_upper(), tower.level, tower.health, tower.max_health, Combat.ROLES[tower.role].range]
+        upgrade_button.text = "MAX LEVEL" if tower.level == 3 else "U  Upgrade / %d" % match_model.upgrade_cost(selected_cell)
+        upgrade_button.disabled = tower.level == 3 or combat_model.gold < match_model.upgrade_cost(selected_cell)
+        sell_button.text = "X  Sell / %d" % match_model.sell_value(selected_cell)
+    else:
+        info_label.text = "ARC: focused damage  |  NOVA: splash radius 1.3  |  FROST: 50% slow  |  D route · M mute · R restart"
+        upgrade_button.text = "U  Upgrade"
+        sell_button.text = "X  Sell"
+    overlay.visible = match_model.phase in ["won", "lost"]
+    outcome_label.text = "%s\n%d shattered · %d escaped\n%s" % ["CROSSING SECURED" if match_model.phase == "won" else "THE GATE HAS FALLEN", match_model.kills, match_model.leaked, "Six waves survived. The rift is quiet." if match_model.phase == "won" else "Try a longer route and mixed tower roles."]
+
+func _build_audio() -> void:
+    # Original synthesized mono PCM cues; no external assets or dependencies.
+    var frequencies := {"shot": 620.0, "death": 210.0, "build": 440.0, "wave": 330.0, "leak": 110.0, "won": 880.0, "lost": 90.0}
+    for kind in frequencies:
+        var data := PackedByteArray()
+        var count := 2205 if kind == "shot" else 6615
+        for i in range(count):
+            var t := float(i) / 22050.0
+            var envelope := pow(1.0 - float(i) / count, 2)
+            var sample := int(sin(TAU * frequencies[kind] * t * (1.0 - t)) * envelope * 6500)
+            data.append(sample & 255)
+            data.append((sample >> 8) & 255)
+        var stream := AudioStreamWAV.new()
+        stream.format = AudioStreamWAV.FORMAT_16_BITS
+        stream.mix_rate = 22050
+        stream.data = data
+        tones[kind] = stream
+    for i in range(8):
+        var player := AudioStreamPlayer.new()
+        player.volume_db = -15
+        add_child(player)
+        audio_players.append(player)
+
+func _sound(kind: String) -> void:
+    if muted:
         return
-    var allowed: bool = board_model.can_place_blocker(hovered_cell)
-    _draw_prism(hovered_cell, Color(COLOR_VALID if allowed else COLOR_INVALID, 0.62), 0.88)
+    for player in audio_players:
+        if not player.playing:
+            player.stream = tones[kind]
+            player.play()
+            return
 
 func _draw_prism(cell: Vector2i, color: Color, scale_factor: float) -> void:
     var base := _tile_polygon(cell, scale_factor)
@@ -193,173 +378,6 @@ func _draw_prism(cell: Vector2i, color: Color, scale_factor: float) -> void:
     draw_colored_polygon(top, color.lightened(0.12))
     draw_polyline(_close_polygon(top), color.lightened(0.35), 1.6, true)
     draw_line(top[2], base[2], color.darkened(0.5), 1.5, true)
-
-func _draw_projectiles() -> void:
-    for projectile in combat_model.projectiles:
-        if not combat_model.enemies.has(projectile.target_id):
-            continue
-        var origin_cell := Vector2i(projectile.origin)
-        var origin := _cell_to_world(origin_cell) - Vector2(0.0, BLOCK_HEIGHT + 8.0)
-        var target := enemy_position - Vector2(0.0, 17.0)
-        var progress: float = 1.0 - projectile.remaining / projectile.duration
-        var position := origin.lerp(target, clampf(progress, 0.0, 1.0))
-        draw_line(origin, position, Color(COLOR_PROJECTILE, 0.22), 2.0, true)
-        draw_circle(position, 5.0, COLOR_PROJECTILE)
-        draw_circle(position, 9.0, Color(COLOR_PROJECTILE, 0.16))
-
-func _draw_enemy() -> void:
-    if death_burst_timer > 0.0:
-        var burst_radius := 18.0 + (0.5 - death_burst_timer) * 45.0
-        draw_circle(enemy_position - Vector2(0.0, 17.0), burst_radius, Color(COLOR_RIFT, death_burst_timer * 0.45))
-    if not _enemy_is_alive():
-        return
-    draw_set_transform(enemy_position + Vector2(0.0, 8.0), 0.0, Vector2(1.3, 0.48))
-    draw_circle(Vector2.ZERO, 13.0, Color(0.0, 0.0, 0.0, 0.32))
-    draw_set_transform(Vector2.ZERO)
-    var body := enemy_position - Vector2(0.0, 17.0)
-    var body_color := Color.WHITE if hit_flash_timer > 0.0 else Color("#f05fd2")
-    draw_circle(body, 12.5, body_color)
-    draw_circle(body - Vector2(3.5, 3.5), 4.0, Color("#ffd7f6"))
-    draw_arc(body, 14.5, 0.0, TAU, 24, Color("#6f235e"), 2.0, true)
-    var enemy: Dictionary = combat_model.enemies[ENEMY_ID]
-    var health_ratio: float = enemy.health / enemy.max_health
-    var bar_position := body + Vector2(-18.0, -24.0)
-    draw_rect(Rect2(bar_position, Vector2(36.0, 5.0)), Color("#321f32"))
-    draw_rect(Rect2(bar_position, Vector2(36.0 * health_ratio, 5.0)), COLOR_VALID)
-    if breach_swing_timer > 0.0 and last_breach_target != Vector2i(-1, -1):
-        var target := _cell_to_world(last_breach_target) - Vector2(0.0, BLOCK_HEIGHT + 7.0)
-        draw_line(body, target, Color(COLOR_BREACH, breach_swing_timer * 5.0), 5.0, true)
-
-func _place_hovered_tower() -> void:
-    if board_model.try_place_blocker(hovered_cell):
-        combat_model.add_tower(hovered_cell)
-        if board_model.route.is_empty():
-            _set_status("Route sealed — scout is preparing to breach.", COLOR_BREACH)
-        else:
-            _set_status("Arc tower placed — tracking targets.", COLOR_VALID)
-        _reset_enemy_movement()
-    else:
-        _set_status("Placement rejected — that cell cannot hold a tower.", COLOR_INVALID)
-    queue_redraw()
-
-func _remove_hovered_tower() -> void:
-    if board_model.remove_blocker(hovered_cell):
-        combat_model.remove_tower(hovered_cell)
-        _set_status("Arc tower removed.", COLOR_ROUTE)
-        _reset_enemy_movement()
-        queue_redraw()
-
-func _spawn_enemy() -> void:
-    enemy_respawn_timer = 0.0
-    board_model.refresh_navigation_from(board_model.start)
-    _reset_enemy_movement()
-    combat_model.add_enemy(ENEMY_ID, _enemy_grid_position(), 0.0, ENEMY_MAX_HEALTH, ENEMY_REWARD)
-    _sync_breach_target()
-    _set_status("A rift scout enters the crossing.", COLOR_ROUTE)
-
-func _reset_enemy_movement() -> void:
-    enemy_route_index = 0
-    enemy_segment_progress = 0.0
-    var movement_route := _movement_route()
-    if not movement_route.is_empty():
-        enemy_position = _cell_to_world(movement_route.front())
-    if combat_model != null and combat_model.enemies.has(ENEMY_ID):
-        combat_model.update_enemy(ENEMY_ID, _enemy_grid_position(), 0.0)
-        _sync_breach_target()
-
-func _advance_enemy(delta: float) -> void:
-    var movement_route := _movement_route()
-    if movement_route.is_empty():
-        return
-    var remaining := ENEMY_SPEED * delta
-    while remaining > 0.0:
-        var from := _cell_to_world(movement_route[enemy_route_index])
-        var next_index := enemy_route_index + 1
-        if next_index >= movement_route.size():
-            if board_model.route.is_empty() and board_model.breach_target != Vector2i(-1, -1):
-                enemy_position = from
-                return
-            _set_status("Scout reached the gate — lives arrive with M3.", COLOR_GATE)
-            _spawn_enemy()
-            return
-        var to := _cell_to_world(movement_route[next_index])
-        var segment_length := from.distance_to(to)
-        var distance_left := segment_length * (1.0 - enemy_segment_progress)
-        if remaining < distance_left:
-            enemy_segment_progress += remaining / segment_length
-            enemy_position = from.lerp(to, enemy_segment_progress)
-            return
-        remaining -= distance_left
-        enemy_route_index = next_index
-        enemy_segment_progress = 0.0
-        enemy_position = to
-
-func _enemy_grid_position() -> Vector2:
-    var movement_route := _movement_route()
-    if movement_route.is_empty():
-        return Vector2(START_CELL)
-    var safe_index := mini(enemy_route_index, movement_route.size() - 1)
-    var current := Vector2(movement_route[safe_index])
-    var next_index := mini(safe_index + 1, movement_route.size() - 1)
-    return current.lerp(Vector2(movement_route[next_index]), enemy_segment_progress)
-
-func _enemy_route_progress() -> float:
-    var movement_route := _movement_route()
-    if movement_route.size() < 2:
-        return 0.0
-    return (float(enemy_route_index) + enemy_segment_progress) / float(movement_route.size() - 1)
-
-func _movement_route() -> Array[Vector2i]:
-    return board_model.active_route()
-
-func _sync_breach_target() -> void:
-    var target: Vector2i = board_model.breach_target if board_model.route.is_empty() else Vector2i(-1, -1)
-    combat_model.set_enemy_breach_target(ENEMY_ID, target)
-
-func _enemy_is_alive() -> bool:
-    return combat_model != null and combat_model.enemies.has(ENEMY_ID) and combat_model.enemies[ENEMY_ID].alive
-
-func _handle_combat_events() -> void:
-    for event in combat_model.consume_events():
-        if event.type == "hit":
-            hit_flash_timer = 0.12
-        elif event.type == "death":
-            death_burst_timer = 0.5
-            enemy_respawn_timer = RESPAWN_DELAY
-            _set_status("Rift scout shattered. +%d gold." % event.reward, COLOR_GATE)
-        elif event.type == "tower_hit":
-            last_breach_target = event.tower_cell
-            breach_swing_timer = 0.18
-            tower_hit_flashes[event.tower_cell] = 0.14
-            _set_status("Scout is breaching the sealed maze!", COLOR_BREACH)
-        elif event.type == "tower_destroyed":
-            var current_cell := Vector2i(_enemy_grid_position().round())
-            board_model.remove_blocker(event.tower_cell)
-            tower_hit_flashes.erase(event.tower_cell)
-            _resume_navigation_from(current_cell)
-            _set_status("Tower breached — navigation recalculated.", COLOR_BREACH)
-
-func _resume_navigation_from(cell: Vector2i) -> void:
-    board_model.refresh_navigation_from(cell)
-    var movement_route := _movement_route()
-    var route_index := movement_route.find(cell)
-    if route_index < 0:
-        _reset_enemy_movement()
-        return
-    enemy_route_index = route_index
-    enemy_segment_progress = 0.0
-    enemy_position = _cell_to_world(cell)
-    combat_model.update_enemy(ENEMY_ID, Vector2(cell), _enemy_route_progress())
-    _sync_breach_target()
-
-func _update_hud() -> void:
-    gold_label.text = "Gold  %d" % combat_model.gold
-    if _enemy_is_alive():
-        var enemy: Dictionary = combat_model.enemies[ENEMY_ID]
-        var mode := "  ·  BREACHING" if enemy.breach_target != Vector2i(-1, -1) else ""
-        enemy_label.text = "Scout  %d / %d HP%s" % [ceili(enemy.health), ceili(enemy.max_health), mode]
-    else:
-        enemy_label.text = "Scout  respawning..."
 
 func _cell_to_world(cell: Vector2i) -> Vector2:
     return _grid_position_to_world(Vector2(cell))
@@ -416,34 +434,3 @@ func _close_polygon(points: PackedVector2Array) -> PackedVector2Array:
     var closed := points.duplicate()
     closed.append(points[0])
     return closed
-
-func _build_interface() -> void:
-    var title := _make_label("RIFTGUARD", Vector2(28, 22), 32, Color("#e5f4ff"))
-    title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-    title.add_theme_constant_override("shadow_offset_x", 2)
-    title.add_theme_constant_override("shadow_offset_y", 3)
-
-    _make_label("COMBAT SLICE  ·  M2", Vector2(31, 63), 13, Color("#77bed4"))
-    _make_label("LMB  Place arc tower\nRMB  Remove tower\nR      Clear maze\nD      Toggle route", Vector2(28, 112), 17, Color("#c5d9e5"))
-    _make_label("RIFT", Vector2(220, 340), 14, COLOR_RIFT)
-    _make_label("GATE", Vector2(1058, 340), 14, COLOR_GATE)
-
-    route_label = _make_label("Route overlay: ON", Vector2(1020, 26), 15, COLOR_ROUTE)
-    gold_label = _make_label("Gold  0", Vector2(1030, 58), 20, COLOR_GATE)
-    enemy_label = _make_label("Scout  100 / 100 HP", Vector2(1000, 88), 16, Color("#ffd7f6"))
-    status_label = _make_label("Build an arc tower and let it hunt.", Vector2(28, 665), 18, COLOR_ROUTE)
-
-func _make_label(text: String, position: Vector2, font_size: int, color: Color) -> Label:
-    var label := Label.new()
-    label.text = text
-    label.position = position
-    label.add_theme_font_size_override("font_size", font_size)
-    label.add_theme_color_override("font_color", color)
-    add_child(label)
-    return label
-
-func _set_status(text: String, color: Color) -> void:
-    if status_label == null:
-        return
-    status_label.text = text
-    status_label.add_theme_color_override("font_color", color)

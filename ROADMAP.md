@@ -1,54 +1,26 @@
 # Riftguard — Roadmap
 
-## M1: Maze Prototype
+## Delivered foundations: Maze and Combat
 
-- [x] Isometric logical grid
-- [x] Routefinding from rift to gate
-- [x] Place/remove blockers
-- [x] Reject placements that seal the route
-- [x] Moving enemy marker
-- [x] Headless behavior tests
-- [x] Windows playtest instructions
+Board/pathfinding, approved high long-side camera, projectile impact combat, health, exactly-once rewards and reachable frontier breach behavior are retained.
 
-## M2: Combat Slice
+## Complete Match milestone — implemented, review pending
 
-Acceptance criteria for the first playable combat slice:
+- [x] Unlimited build phase and six finite authored waves
+- [x] Salvage budget, kill and clear rewards, lives, win/loss and restart
+- [x] Arc direct fire, Nova splash, Frost slow
+- [x] Scout, fast runner and durable brute
+- [x] Two upgrade levels, repair-on-upgrade and investment-based selling
+- [x] Independent concurrent enemy movement and current-origin breach replanning
+- [x] Cohesive procedural shapes, themed HUD, range/placement feedback and effects
+- [x] Original generated PCM cues, mute, pause and speed controls
+- [x] Expanded automated rules, full-match and scene verification
+- [ ] Independent parent review and shipping (no commit made by implementation agent)
+- [x] Actual rendered Linux/llvmpipe playtest via authenticated private Xvfb: mouse/keyboard placement, upgrades, six-wave victory, defeat, restart and dense breach
+- [ ] Native Windows feel/performance and audio listening check (rendered QA used Dummy audio)
 
-- Placed barricades act as towers and automatically target the enemy furthest along the route within range.
-- Towers fire visible projectiles on a fixed cooldown; damage resolves only when a projectile lands.
-- The enemy displays health, dies at zero health, grants gold exactly once, then respawns for continued testing.
-- Hovering a tower shows its attack range, and shots, hits and kills have distinct readable feedback.
-- Maze placement rules and the locked 13×9 long-side camera remain unchanged.
+## Later, only after playtest
 
-Tower breach acceptance criteria:
+Balance variety and challenge, stronger onboarding/wave preview, accessibility and performance passes, richer original artwork/audio. No campaign, faction expansion or multiplayer in this milestone.
 
-- Route-sealing towers are accepted instead of silently rejected.
-- A blocked enemy follows a valid route to an open cell beside a reachable frontier tower.
-- The enemy attacks that tower at a readable fixed cadence; tower health and impacts are visible.
-- Destroyed towers are removed from board and combat state, navigation is recalculated, and the enemy resumes toward the gate or selects the next breach target.
-- Towers target breaching enemies normally during approach and tower attacks; incoming projectiles survive breach entry, deaths reward exactly once and stop enemy attacks, and respawns synchronize with the current navigation plan.
-
-- [x] Tower targeting
-- [x] Projectile and hit resolution
-- [x] Enemy health and death
-- [x] Kill reward economy
-- [x] Tower health and enemy breach attacks when the route is sealed
-- [x] Reachable breach-target selection and route recalculation after destruction
-- [x] Range preview
-- [x] Layered impact feedback
-
-## M3: Complete Round
-
-- [ ] Build and wave phases
-- [ ] Gold, lives, victory and defeat
-- [ ] Three tower roles
-- [ ] Five tuned waves
-- [ ] Restart and pause flow
-
-## M4: Vertical Slice
-
-- [ ] First cohesive faction
-- [ ] Final-ish visual language
-- [ ] Audio and settings
-- [ ] Onboarding
-- [ ] Performance and accessibility pass
+Internal test-driven slices are implementation details, not separate user testing milestones. Multica project **Riftguard** (`d763e36c-785c-4330-b3ce-292bb1cf6646`), parent milestone **JOPE-47**, is the review/handoff boundary. Internal review/fix work belongs beneath that milestone, not in standalone per-agent or per-test cards. Parent owns tracking and release review; this implementation makes no Multica changes.
