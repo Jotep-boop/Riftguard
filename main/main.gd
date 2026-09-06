@@ -28,6 +28,7 @@ const COLOR_RIFT := Color("#d852ff")
 const COLOR_GATE := Color("#ffc85c")
 const COLOR_TOWER := Color("#4f92a3")
 const COLOR_PROJECTILE := Color("#fff3a8")
+const COLOR_BREACH := Color("#ff8a5c")
 
 var board_model
 var combat_model
@@ -39,6 +40,9 @@ var enemy_segment_progress := 0.0
 var enemy_respawn_timer := 0.0
 var hit_flash_timer := 0.0
 var death_burst_timer := 0.0
+var breach_swing_timer := 0.0
+var last_breach_target := Vector2i(-1, -1)
+var tower_hit_flashes: Dictionary = {}
 var status_label: Label
 var route_label: Label
 var gold_label: Label
@@ -54,6 +58,11 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     hit_flash_timer = maxf(0.0, hit_flash_timer - delta)
     death_burst_timer = maxf(0.0, death_burst_timer - delta)
+    breach_swing_timer = maxf(0.0, breach_swing_timer - delta)
+    for cell in tower_hit_flashes.keys():
+        tower_hit_flashes[cell] = maxf(0.0, tower_hit_flashes[cell] - delta)
+        if tower_hit_flashes[cell] <= 0.0:
+            tower_hit_flashes.erase(cell)
     if enemy_respawn_timer > 0.0:
         enemy_respawn_timer -= delta
         if enemy_respawn_timer <= 0.0:
@@ -61,6 +70,7 @@ func _process(delta: float) -> void:
     elif _enemy_is_alive():
         _advance_enemy(delta)
         combat_model.update_enemy(ENEMY_ID, _enemy_grid_position(), _enemy_route_progress())
+        _sync_breach_target()
     combat_model.advance(delta)
     _handle_combat_events()
     _update_hud()
@@ -109,15 +119,21 @@ func _draw_board() -> void:
             draw_polyline(_close_polygon(tile), COLOR_GRID, 1.7, true)
 
 func _draw_route() -> void:
-    if board_model.route.size() < 2:
+    var movement_route := _movement_route()
+    if movement_route.is_empty():
         return
     var points := PackedVector2Array()
-    for cell in board_model.route:
+    for cell in movement_route:
         points.append(_cell_to_world(cell) - Vector2(0.0, 7.0))
-    draw_polyline(points, Color(0.08, 0.18, 0.24, 0.9), 10.0, true)
-    draw_polyline(points, Color(COLOR_ROUTE, 0.9), 3.0, true)
+    var route_color := COLOR_ROUTE if not board_model.route.is_empty() else COLOR_BREACH
+    if points.size() >= 2:
+        draw_polyline(points, Color(0.08, 0.18, 0.24, 0.9), 10.0, true)
+        draw_polyline(points, Color(route_color, 0.9), 3.0, true)
     for point in points:
         draw_circle(point, 3.5, Color.WHITE)
+    if board_model.route.is_empty() and board_model.breach_target != Vector2i(-1, -1):
+        var target := _cell_to_world(board_model.breach_target) - Vector2(0.0, BLOCK_HEIGHT + 7.0)
+        draw_arc(target, 15.0, 0.0, TAU, 24, COLOR_BREACH, 3.0, true)
 
 func _draw_endpoints() -> void:
     var rift_center := _cell_to_world(START_CELL) - Vector2(0.0, 7.0)
@@ -146,11 +162,18 @@ func _draw_towers() -> void:
         for cell in board_model.blocked.keys():
             if cell.y != depth:
                 continue
-            _draw_prism(cell, COLOR_TOWER, 1.0)
+            var tower: Dictionary = combat_model.towers.get(cell, {})
+            var tower_color := Color.WHITE if tower_hit_flashes.has(cell) else COLOR_TOWER
+            _draw_prism(cell, tower_color, 1.0)
             var turret := _cell_to_world(cell) - Vector2(0.0, BLOCK_HEIGHT + 7.0)
             draw_circle(turret, 8.0, Color("#b7edf3"))
             draw_circle(turret, 4.0, COLOR_PROJECTILE)
             draw_arc(turret, 9.5, 0.0, TAU, 18, Color("#24566a"), 2.0, true)
+            if not tower.is_empty() and (tower.health < tower.max_health or cell == board_model.breach_target):
+                var ratio: float = tower.health / tower.max_health
+                var bar_position := turret + Vector2(-18.0, -18.0)
+                draw_rect(Rect2(bar_position, Vector2(36.0, 5.0)), Color("#321f32"))
+                draw_rect(Rect2(bar_position, Vector2(36.0 * ratio, 5.0)), COLOR_BREACH)
 
 func _draw_hover_preview() -> void:
     if not _inside_board(hovered_cell) or board_model.blocked.has(hovered_cell):
@@ -203,14 +226,20 @@ func _draw_enemy() -> void:
     var bar_position := body + Vector2(-18.0, -24.0)
     draw_rect(Rect2(bar_position, Vector2(36.0, 5.0)), Color("#321f32"))
     draw_rect(Rect2(bar_position, Vector2(36.0 * health_ratio, 5.0)), COLOR_VALID)
+    if breach_swing_timer > 0.0 and last_breach_target != Vector2i(-1, -1):
+        var target := _cell_to_world(last_breach_target) - Vector2(0.0, BLOCK_HEIGHT + 7.0)
+        draw_line(body, target, Color(COLOR_BREACH, breach_swing_timer * 5.0), 5.0, true)
 
 func _place_hovered_tower() -> void:
     if board_model.try_place_blocker(hovered_cell):
         combat_model.add_tower(hovered_cell)
-        _set_status("Arc tower placed — tracking targets.", COLOR_VALID)
+        if board_model.route.is_empty():
+            _set_status("Route sealed — scout is preparing to breach.", COLOR_BREACH)
+        else:
+            _set_status("Arc tower placed — tracking targets.", COLOR_VALID)
         _reset_enemy_movement()
     else:
-        _set_status("Placement rejected — breach attacks arrive in the next slice.", COLOR_INVALID)
+        _set_status("Placement rejected — that cell cannot hold a tower.", COLOR_INVALID)
     queue_redraw()
 
 func _remove_hovered_tower() -> void:
@@ -222,30 +251,38 @@ func _remove_hovered_tower() -> void:
 
 func _spawn_enemy() -> void:
     enemy_respawn_timer = 0.0
+    board_model.refresh_navigation_from(board_model.start)
     _reset_enemy_movement()
     combat_model.add_enemy(ENEMY_ID, _enemy_grid_position(), 0.0, ENEMY_MAX_HEALTH, ENEMY_REWARD)
+    _sync_breach_target()
     _set_status("A rift scout enters the crossing.", COLOR_ROUTE)
 
 func _reset_enemy_movement() -> void:
     enemy_route_index = 0
     enemy_segment_progress = 0.0
-    if not board_model.route.is_empty():
-        enemy_position = _cell_to_world(board_model.route.front())
+    var movement_route := _movement_route()
+    if not movement_route.is_empty():
+        enemy_position = _cell_to_world(movement_route.front())
     if combat_model != null and combat_model.enemies.has(ENEMY_ID):
         combat_model.update_enemy(ENEMY_ID, _enemy_grid_position(), 0.0)
+        _sync_breach_target()
 
 func _advance_enemy(delta: float) -> void:
-    if board_model.route.size() < 2:
+    var movement_route := _movement_route()
+    if movement_route.is_empty():
         return
     var remaining := ENEMY_SPEED * delta
     while remaining > 0.0:
-        var from := _cell_to_world(board_model.route[enemy_route_index])
+        var from := _cell_to_world(movement_route[enemy_route_index])
         var next_index := enemy_route_index + 1
-        if next_index >= board_model.route.size():
+        if next_index >= movement_route.size():
+            if board_model.route.is_empty() and board_model.breach_target != Vector2i(-1, -1):
+                enemy_position = from
+                return
             _set_status("Scout reached the gate — lives arrive with M3.", COLOR_GATE)
             _spawn_enemy()
             return
-        var to := _cell_to_world(board_model.route[next_index])
+        var to := _cell_to_world(movement_route[next_index])
         var segment_length := from.distance_to(to)
         var distance_left := segment_length * (1.0 - enemy_segment_progress)
         if remaining < distance_left:
@@ -258,16 +295,26 @@ func _advance_enemy(delta: float) -> void:
         enemy_position = to
 
 func _enemy_grid_position() -> Vector2:
-    if board_model.route.is_empty():
+    var movement_route := _movement_route()
+    if movement_route.is_empty():
         return Vector2(START_CELL)
-    var current := Vector2(board_model.route[enemy_route_index])
-    var next_index := mini(enemy_route_index + 1, board_model.route.size() - 1)
-    return current.lerp(Vector2(board_model.route[next_index]), enemy_segment_progress)
+    var safe_index := mini(enemy_route_index, movement_route.size() - 1)
+    var current := Vector2(movement_route[safe_index])
+    var next_index := mini(safe_index + 1, movement_route.size() - 1)
+    return current.lerp(Vector2(movement_route[next_index]), enemy_segment_progress)
 
 func _enemy_route_progress() -> float:
-    if board_model.route.size() < 2:
+    var movement_route := _movement_route()
+    if movement_route.size() < 2:
         return 0.0
-    return (float(enemy_route_index) + enemy_segment_progress) / float(board_model.route.size() - 1)
+    return (float(enemy_route_index) + enemy_segment_progress) / float(movement_route.size() - 1)
+
+func _movement_route() -> Array[Vector2i]:
+    return board_model.active_route()
+
+func _sync_breach_target() -> void:
+    var target: Vector2i = board_model.breach_target if board_model.route.is_empty() else Vector2i(-1, -1)
+    combat_model.set_enemy_breach_target(ENEMY_ID, target)
 
 func _enemy_is_alive() -> bool:
     return combat_model != null and combat_model.enemies.has(ENEMY_ID) and combat_model.enemies[ENEMY_ID].alive
@@ -280,12 +327,37 @@ func _handle_combat_events() -> void:
             death_burst_timer = 0.5
             enemy_respawn_timer = RESPAWN_DELAY
             _set_status("Rift scout shattered. +%d gold." % event.reward, COLOR_GATE)
+        elif event.type == "tower_hit":
+            last_breach_target = event.tower_cell
+            breach_swing_timer = 0.18
+            tower_hit_flashes[event.tower_cell] = 0.14
+            _set_status("Scout is breaching the sealed maze!", COLOR_BREACH)
+        elif event.type == "tower_destroyed":
+            var current_cell := Vector2i(_enemy_grid_position().round())
+            board_model.remove_blocker(event.tower_cell)
+            tower_hit_flashes.erase(event.tower_cell)
+            _resume_navigation_from(current_cell)
+            _set_status("Tower breached — navigation recalculated.", COLOR_BREACH)
+
+func _resume_navigation_from(cell: Vector2i) -> void:
+    board_model.refresh_navigation_from(cell)
+    var movement_route := _movement_route()
+    var route_index := movement_route.find(cell)
+    if route_index < 0:
+        _reset_enemy_movement()
+        return
+    enemy_route_index = route_index
+    enemy_segment_progress = 0.0
+    enemy_position = _cell_to_world(cell)
+    combat_model.update_enemy(ENEMY_ID, Vector2(cell), _enemy_route_progress())
+    _sync_breach_target()
 
 func _update_hud() -> void:
     gold_label.text = "Gold  %d" % combat_model.gold
     if _enemy_is_alive():
         var enemy: Dictionary = combat_model.enemies[ENEMY_ID]
-        enemy_label.text = "Scout  %d / %d HP" % [ceili(enemy.health), ceili(enemy.max_health)]
+        var mode := "  ·  BREACHING" if enemy.breach_target != Vector2i(-1, -1) else ""
+        enemy_label.text = "Scout  %d / %d HP%s" % [ceili(enemy.health), ceili(enemy.max_health), mode]
     else:
         enemy_label.text = "Scout  respawning..."
 

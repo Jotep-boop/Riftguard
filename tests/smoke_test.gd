@@ -60,5 +60,108 @@ func _initialize() -> void:
         quit(1)
         return
 
+    for barrier_x in [1, 3]:
+        for depth in range(9):
+            instance.hovered_cell = Vector2i(barrier_x, depth)
+            instance.call("_place_hovered_tower")
+    await process_frame
+    if not instance.board_model.route.is_empty():
+        push_error("Two complete tower walls must seal the normal route")
+        quit(1)
+        return
+    if instance.board_model.breach_target == Vector2i(-1, -1) or instance.board_model.breach_route.is_empty():
+        push_error("A sealed board must expose a reachable breach plan")
+        quit(1)
+        return
+    if instance.combat_model.towers.size() != 18:
+        push_error("Route-sealing placement must keep board and combat towers synchronized")
+        quit(1)
+        return
+
+    instance.call("_reset_enemy_movement")
+    var target: Vector2i = instance.board_model.breach_target
+    if instance.combat_model.enemies["scout"].breach_target != target:
+        push_error("Blocked enemy must target the board's breach tower")
+        quit(1)
+        return
+    instance.combat_model.towers[target].health = 25.0
+    instance.combat_model.enemies["scout"].breach_cooldown = 0.0
+    var attack_cell: Vector2i = instance.board_model.breach_route.back()
+    instance.combat_model.update_enemy("scout", Vector2(attack_cell), 0.0)
+    instance.combat_model.projectiles.clear()
+    instance.combat_model.consume_events()
+    var cooldowns_before := {}
+    for cell in instance.combat_model.towers:
+        if cell != target:
+            instance.combat_model.towers[cell].cooldown = 0.0
+            cooldowns_before[cell] = instance.combat_model.towers[cell].cooldown
+    instance.combat_model.advance(0.0)
+    var attack_events: Array[Dictionary] = instance.combat_model.events.duplicate(true)
+    if not instance.combat_model.projectiles.is_empty():
+        push_error("A chained breach must not create phantom projectiles after tower destruction")
+        quit(1)
+        return
+    if attack_events.any(func(event: Dictionary) -> bool: return event.type == "shot"):
+        push_error("A chained breach must not emit phantom shot events after tower destruction")
+        quit(1)
+        return
+    for cell in cooldowns_before:
+        if not is_equal_approx(instance.combat_model.towers[cell].cooldown, cooldowns_before[cell]):
+            push_error("A chained breach must not consume unrelated tower cooldowns")
+            quit(1)
+            return
+    instance.call("_handle_combat_events")
+    if instance.board_model.blocked.has(target) or instance.combat_model.towers.has(target):
+        push_error("Destroyed breach tower must leave both board and combat state")
+        quit(1)
+        return
+    if Vector2i(instance.call("_enemy_grid_position").round()) != attack_cell:
+        push_error("Chained breach replanning must preserve the enemy's current cell")
+        quit(1)
+        return
+    var next_target: Vector2i = instance.board_model.breach_target
+    if not instance.board_model.route.is_empty() or next_target == Vector2i(-1, -1) or next_target == target:
+        push_error("Chained breach replanning must select the next barrier target")
+        quit(1)
+        return
+    if instance.combat_model.enemies["scout"].breach_target != next_target:
+        push_error("Chained breach replanning must synchronize the next combat target")
+        quit(1)
+        return
+
+    var advanced_cell := Vector2i(2, 4)
+    instance.call("_resume_navigation_from", advanced_cell)
+    for cell in instance.combat_model.towers:
+        instance.combat_model.towers[cell].cooldown = 0.0
+    instance.combat_model.projectiles.clear()
+    instance.combat_model.consume_events()
+    instance.call("_spawn_enemy")
+    if instance.board_model.active_route().front() != instance.board_model.start:
+        push_error("A newly spawned enemy must restore navigation from the canonical start")
+        quit(1)
+        return
+    var spawn_target: Vector2i = instance.board_model.breach_target
+    if spawn_target == Vector2i(-1, -1) or instance.combat_model.enemies["scout"].breach_target != spawn_target:
+        push_error("A sealed-board respawn must enter breach mode before combat advances")
+        quit(1)
+        return
+    var respawn_cooldowns := {}
+    for cell in instance.combat_model.towers:
+        respawn_cooldowns[cell] = instance.combat_model.towers[cell].cooldown
+    instance.combat_model.advance(0.0)
+    if not instance.combat_model.projectiles.is_empty():
+        push_error("A sealed-board respawn must not create phantom projectiles")
+        quit(1)
+        return
+    if instance.combat_model.events.any(func(event: Dictionary) -> bool: return event.type == "shot"):
+        push_error("A sealed-board respawn must not emit phantom shot events")
+        quit(1)
+        return
+    for cell in respawn_cooldowns:
+        if not is_equal_approx(instance.combat_model.towers[cell].cooldown, respawn_cooldowns[cell]):
+            push_error("A sealed-board respawn must not consume tower cooldowns")
+            quit(1)
+            return
+
     print("PASS: main scene smoke test")
     quit(0)

@@ -6,7 +6,7 @@
 - Preserve the approved 13×9 logical board, start `(0, 4)`, goal `(12, 4)`, high long-side camera and left-to-right enemy flow unless Jeppe explicitly requests a redesign.
 - Keep gameplay state and rules outside rendering code when practical; presentation consumes model state and events.
 - Do not multiply content until the current vertical slice is stable, readable and fun.
-- Route-sealing placement remains rejected until tower health, reachable breach targeting, enemy attacks, destruction feedback and route recalculation work together.
+- Route-sealing placement is allowed. Preserve the complete breach loop: reachable frontier targeting, approach movement, tower health, enemy attack cadence, destruction feedback and navigation recalculation.
 
 ## Development workflow
 

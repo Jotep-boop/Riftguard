@@ -11,7 +11,8 @@ func _init() -> void:
     _test_routes_around_a_blocked_cell()
     _test_balances_an_unblocked_diagonal_route()
     _test_board_accepts_a_legal_blocker()
-    _test_board_rejects_a_route_sealing_blocker()
+    _test_board_accepts_a_route_sealing_blocker_with_breach_plan()
+    _test_board_builds_navigation_from_an_arbitrary_origin()
     _test_board_removes_a_blocker()
     _test_board_clears_all_blockers()
     _test_board_previews_a_legal_placement()
@@ -25,8 +26,12 @@ func _init() -> void:
     _test_combat_events_are_consumed_once()
     _test_respawn_discards_stale_projectiles()
     _test_tower_range_ends_at_three_cells()
+    _test_enemy_attacks_breach_target_on_cooldown()
+    _test_breach_attack_destroys_tower_and_emits_event()
+    _test_towers_do_not_farm_a_breaching_enemy()
+    _test_entering_breach_discards_incoming_projectiles()
     if failures == 0:
-        print("PASS: 18 tests")
+        print("PASS: 23 tests")
         quit(0)
     else:
         push_error("FAIL: %d assertion(s)" % failures)
@@ -73,12 +78,32 @@ func _test_board_accepts_a_legal_blocker() -> void:
     _expect(accepted, "board accepts a blocker when a detour remains")
     _expect(board.blocked.has(Vector2i(1, 0)), "accepted blocker is retained")
 
-func _test_board_rejects_a_route_sealing_blocker() -> void:
+func _test_board_accepts_a_route_sealing_blocker_with_breach_plan() -> void:
     var board = BoardModel.new(Vector2i(3, 1), Vector2i(0, 0), Vector2i(2, 0))
     var accepted: bool = board.try_place_blocker(Vector2i(1, 0))
-    _expect(not accepted, "board rejects a blocker that seals the route")
-    _expect(not board.blocked.has(Vector2i(1, 0)), "rejected blocker is rolled back")
-    _expect(not board.route.is_empty(), "existing route survives a rejected placement")
+    _expect(accepted, "board accepts a blocker that seals the route")
+    _expect(board.blocked.has(Vector2i(1, 0)), "route-sealing blocker is retained")
+    _expect(board.route.is_empty(), "normal route is empty while the gate is sealed")
+    _expect(board.breach_target == Vector2i(1, 0), "board selects the reachable sealing tower")
+    _expect(board.breach_route == [Vector2i(0, 0)], "breach route ends beside the target tower")
+
+func _test_board_builds_navigation_from_an_arbitrary_origin() -> void:
+    var board = BoardModel.new(Vector2i(5, 3), Vector2i(0, 1), Vector2i(4, 1))
+    for depth in range(3):
+        board.try_place_blocker(Vector2i(3, depth))
+    var current_cell := Vector2i(2, 1)
+    _expect(board.has_method("refresh_navigation_from"), "board exposes navigation refresh from an arbitrary origin")
+    if not board.has_method("refresh_navigation_from"):
+        return
+    board.refresh_navigation_from(current_cell)
+    _expect(board.route.is_empty(), "arbitrary-origin navigation remains sealed by the next barrier")
+    _expect(board.breach_target == Vector2i(3, 1), "arbitrary-origin navigation selects a reachable breach tower")
+    _expect(board.breach_route.front() == current_cell, "arbitrary-origin breach route starts at the enemy cell")
+    board.remove_blocker(Vector2i(3, 1))
+    board.refresh_navigation_from(current_cell)
+    _expect(board.route.front() == current_cell, "open navigation resumes at the enemy cell")
+    _expect(board.route.back() == board.goal, "open navigation continues toward the canonical gate")
+    _expect(board.start == Vector2i(0, 1), "navigation refresh preserves the canonical spawn cell")
 
 func _test_board_removes_a_blocker() -> void:
     var board = BoardModel.new(Vector2i(3, 2), Vector2i(0, 0), Vector2i(2, 0))
@@ -105,7 +130,7 @@ func _test_board_previews_a_route_sealing_placement() -> void:
     var board = BoardModel.new(Vector2i(3, 1), Vector2i(0, 0), Vector2i(2, 0))
     _expect(board.has_method("can_place_blocker"), "board exposes route-sealing preview")
     if board.has_method("can_place_blocker"):
-        _expect(not board.can_place_blocker(Vector2i(1, 0)), "preview rejects a sealed route")
+        _expect(board.can_place_blocker(Vector2i(1, 0)), "preview accepts a sealed route once breach is supported")
 
 func _test_combat_model_resource_exists() -> void:
     _expect(
@@ -193,6 +218,46 @@ func _test_tower_range_ends_at_three_cells() -> void:
     outside_combat.add_enemy("outside", Vector2(4.01, 1), 0.5, 100.0, 5)
     outside_combat.advance(0.0)
     _expect(outside_combat.projectiles.is_empty(), "tower ignores an enemy beyond three cells")
+
+func _test_enemy_attacks_breach_target_on_cooldown() -> void:
+    var combat = CombatModel.new()
+    combat.add_tower(Vector2i(1, 0))
+    combat.add_enemy("enemy", Vector2(0, 0), 0.0, 100.0, 5)
+    combat.set_enemy_breach_target("enemy", Vector2i(1, 0))
+    combat.advance(0.0)
+    _expect(combat.towers[Vector2i(1, 0)].health == 75.0, "breaching enemy damages an adjacent tower")
+    combat.advance(CombatModel.ENEMY_BREACH_COOLDOWN - 0.01)
+    _expect(combat.towers[Vector2i(1, 0)].health == 75.0, "breach attack waits for its cooldown")
+    combat.advance(0.01)
+    _expect(combat.towers[Vector2i(1, 0)].health == 50.0, "breach attack repeats after its cooldown")
+
+func _test_breach_attack_destroys_tower_and_emits_event() -> void:
+    var combat = CombatModel.new()
+    combat.add_tower(Vector2i(1, 0), 25.0)
+    combat.add_enemy("enemy", Vector2(0, 0), 0.0, 100.0, 5)
+    combat.set_enemy_breach_target("enemy", Vector2i(1, 0))
+    combat.advance(0.0)
+    _expect(not combat.towers.has(Vector2i(1, 0)), "lethal breach attack removes the destroyed tower")
+    var emitted := combat.consume_events()
+    _expect(emitted.any(func(event: Dictionary) -> bool: return event.type == "tower_destroyed"), "tower destruction emits a navigation event")
+
+func _test_towers_do_not_farm_a_breaching_enemy() -> void:
+    var combat = CombatModel.new()
+    combat.add_tower(Vector2i(1, 0))
+    combat.add_tower(Vector2i(2, 0))
+    combat.add_enemy("enemy", Vector2(0, 0), 0.0, 100.0, 5)
+    combat.set_enemy_breach_target("enemy", Vector2i(1, 0))
+    combat.advance(0.0)
+    _expect(combat.projectiles.is_empty(), "towers cannot repeatedly farm an enemy committed to a breach")
+
+func _test_entering_breach_discards_incoming_projectiles() -> void:
+    var combat = CombatModel.new()
+    combat.add_tower(Vector2i(1, 0))
+    combat.add_enemy("enemy", Vector2(2, 0), 0.5, 100.0, 5)
+    combat.advance(0.0)
+    _expect(combat.projectiles.size() == 1, "tower fires before the route becomes sealed")
+    combat.set_enemy_breach_target("enemy", Vector2i(1, 0))
+    _expect(combat.projectiles.is_empty(), "entering breach mode discards incoming tower projectiles")
 
 func _expect(condition: bool, message: String) -> void:
     if not condition:

@@ -20,12 +20,20 @@ Acceptance criteria for the first playable combat slice:
 - Hovering a tower shows its attack range, and shots, hits and kills have distinct readable feedback.
 - Maze placement rules and the locked 13×9 long-side camera remain unchanged.
 
+Tower breach acceptance criteria:
+
+- Route-sealing towers are accepted instead of silently rejected.
+- A blocked enemy follows a valid route to an open cell beside a reachable frontier tower.
+- The enemy attacks that tower at a readable fixed cadence; tower health and impacts are visible.
+- Destroyed towers are removed from board and combat state, navigation is recalculated, and the enemy resumes toward the gate or selects the next breach target.
+- Towers do not shoot enemies while those enemies are actively attacking the same tower.
+
 - [x] Tower targeting
 - [x] Projectile and hit resolution
 - [x] Enemy health and death
 - [x] Kill reward economy
-- [ ] Tower health and enemy breach attacks when the route is sealed
-- [ ] Reachable breach-target selection and route recalculation after destruction
+- [x] Tower health and enemy breach attacks when the route is sealed
+- [x] Reachable breach-target selection and route recalculation after destruction
 - [x] Range preview
 - [x] Layered impact feedback
 

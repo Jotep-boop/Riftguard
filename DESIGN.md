@@ -29,7 +29,7 @@ The first vertical slice contains one board, one faction, three tower roles and 
 
 ## Blocking and breach behavior
 
-Tower placement is unrestricted once tower health and enemy attacks exist. If construction seals every normal route, enemies identify a reachable breach point, advance to it and attack the blocking tower until a route opens. A blocked route is therefore a costly tactical choice, not an invalid input. The prototype may continue rejecting sealed routes until this complete feedback loop is implemented; it must never silently trap enemies.
+Tower placement is unrestricted. If construction seals every normal route, enemies identify a reachable frontier tower, advance to an open cell beside it and attack until navigation opens. If another barrier remains, they select the next reachable breach target. A blocked route is therefore a costly tactical choice, not an invalid input, and enemies must never become silently trapped. Enemies committed to a breach cannot be farmed by defensive tower fire during that state.
 
 ## Presentation
 

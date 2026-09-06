@@ -9,10 +9,10 @@ The current playable slice proves the maze and first combat loop:
 - perspective-projected grid rendered in 2D
 - enemy route from rift to gate
 - build preview and grid interaction
-- path validation before construction
-- impossible placements are rejected
+- live route recalculation after construction
+- sealed routes trigger enemy tower-breach behavior
 - placed structures automatically attack enemies in range
-- visible projectiles, enemy health, death feedback and kill gold
+- visible projectiles, enemy and tower health, destruction feedback and kill gold
 - tower range preview and visible debug route
 
 ## Controls
@@ -22,6 +22,8 @@ The current playable slice proves the maze and first combat loop:
 - **Hover a tower:** show its attack range
 - **R:** clear all towers
 - **D:** toggle route visualization
+
+If towers completely seal the route, the scout follows the orange breach path, attacks a reachable frontier tower and destroys it before continuing toward the gate.
 
 ## Open in Godot
 
